@@ -215,8 +215,8 @@ autonomous:
   poll_interval: 30
   quality_gates: true
 
-# Optional: GROK AI integration
-grok:
+# Optional: sidechannel AI assistant (OpenAI or Grok)
+sidechannel_assistant:
   enabled: false
 YAML
     fi
@@ -268,7 +268,7 @@ fi
 
 # Ask about Grok
 echo ""
-read -p "Enable Grok AI integration (nova assistant)? [y/N] " -n 1 -r
+read -p "Enable sidechannel AI assistant (OpenAI or Grok)? [y/N] " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     sed -i "s/enabled: false/enabled: true/" "$SETTINGS_FILE"

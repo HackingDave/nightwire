@@ -40,13 +40,31 @@ autonomous:
 #   window: 60               # Time window in seconds
 #   max_requests: 30         # Max requests per window per user
 
-# Optional: Grok AI (nova assistant)
-grok:
+# Optional: sidechannel AI assistant (supports OpenAI and Grok)
+sidechannel_assistant:
   enabled: false
-  # model: "grok-2-latest"
+  # provider: "openai"       # or "grok" — auto-detected from API keys if omitted
+  # model: "gpt-4o"          # Default: gpt-4o (OpenAI) or grok-3-latest (Grok)
   # max_tokens: 1024
+
+# Legacy nova / grok config sections are still recognized for backward compatibility
 
 # Project directories
 # projects_base_path: "/home/user/projects"
 # allowed_paths:
 #   - "/home/user/projects"
+
+# Plugins — extend sidechannel with custom functionality
+# Each plugin has its own config section under plugins.<name>
+# plugins:
+#   daily_verse:
+#     enabled: true
+#     hour: 8
+#     minute: 30
+#     recipients: ["+1XXXXXXXXXX"]   # defaults to allowed_numbers
+#   bluos_music:
+#     enabled: true
+#     players:
+#       main_floor: { name: "Main Floor", ip: "10.0.0.1" }
+#     groups:
+#       inside: [main_floor]

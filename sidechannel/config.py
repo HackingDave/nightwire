@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 class Config:
     """Configuration manager for the bot."""
 
-    def __init__(self, config_dir: Path = None):
+    def __init__(self, config_dir: Optional[Path] = None):
         if config_dir is None:
             config_dir = Path(__file__).parent.parent / "config"
         self.config_dir = config_dir
@@ -92,12 +92,115 @@ class Config:
             return str(home_local)
         return "claude"  # Hope it's in PATH
 
-    # Grok AI configuration
+    # sidechannel AI assistant configuration (supports OpenAI and Grok providers)
     @property
-    def grok_enabled(self) -> bool:
-        """Whether Grok AI integration is enabled."""
+    def sidechannel_assistant_enabled(self) -> bool:
+        """Whether sidechannel AI assistant is enabled."""
+        sc_config = self.settings.get("sidechannel_assistant", {})
+        if sc_config.get("enabled") is not None:
+            return sc_config.get("enabled", False)
+        # Fallback to legacy nova / grok config
+        nova_config = self.settings.get("nova", {})
+        if nova_config.get("enabled") is not None:
+            return nova_config.get("enabled", False)
         grok_config = self.settings.get("grok", {})
         return grok_config.get("enabled", False)
+
+    @property
+    def grok_enabled(self) -> bool:
+        """Backward-compatible alias for sidechannel_assistant_enabled."""
+        return self.sidechannel_assistant_enabled
+
+    @property
+    def sidechannel_assistant_provider(self) -> str:
+        """Detect which provider to use: 'openai' or 'grok'.
+
+        Priority:
+        1. Explicit sidechannel_assistant.provider setting
+        2. Auto-detect from env: only OPENAI_API_KEY -> 'openai'
+        3. Auto-detect from env: only GROK_API_KEY -> 'grok'
+        4. Both keys present -> 'grok' (backward compat)
+        5. Neither key -> 'grok' (will fail gracefully at call time)
+        """
+        sc_config = self.settings.get("sidechannel_assistant", {})
+        explicit = sc_config.get("provider")
+        if explicit:
+            return explicit
+        # Fallback to legacy nova config
+        nova_config = self.settings.get("nova", {})
+        explicit = nova_config.get("provider")
+        if explicit:
+            return explicit
+
+        has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+        has_grok = bool(os.environ.get("GROK_API_KEY"))
+
+        if has_openai and not has_grok:
+            return "openai"
+        # grok for: only grok, both, or neither
+        return "grok"
+
+    @property
+    def sidechannel_assistant_api_key(self) -> str:
+        """Return the API key for the active provider."""
+        if self.sidechannel_assistant_provider == "openai":
+            return os.environ.get("OPENAI_API_KEY", "")
+        return os.environ.get("GROK_API_KEY", "")
+
+    @property
+    def sidechannel_assistant_api_url(self) -> str:
+        """Return the API URL for the active provider."""
+        sc_config = self.settings.get("sidechannel_assistant", {})
+        custom_url = sc_config.get("api_url")
+        if custom_url:
+            return custom_url
+        # Fallback to legacy nova config
+        nova_config = self.settings.get("nova", {})
+        custom_url = nova_config.get("api_url")
+        if custom_url:
+            return custom_url
+        if self.sidechannel_assistant_provider == "openai":
+            return "https://api.openai.com/v1/chat/completions"
+        return "https://api.x.ai/v1/chat/completions"
+
+    @property
+    def sidechannel_assistant_model(self) -> str:
+        """Return the model name for the active provider."""
+        sc_config = self.settings.get("sidechannel_assistant", {})
+        model = sc_config.get("model")
+        if model:
+            return model
+        # Fallback to legacy nova / grok config
+        nova_config = self.settings.get("nova", {})
+        model = nova_config.get("model")
+        if model:
+            return model
+        grok_config = self.settings.get("grok", {})
+        model = grok_config.get("model")
+        if model:
+            return model
+        # Provider default
+        if self.sidechannel_assistant_provider == "openai":
+            return "gpt-4o"
+        return "grok-3-latest"
+
+    @property
+    def sidechannel_assistant_max_tokens(self) -> int:
+        """Return max tokens for sidechannel assistant responses."""
+        sc_config = self.settings.get("sidechannel_assistant", {})
+        val = sc_config.get("max_tokens")
+        if val is not None:
+            return int(val)
+        # Fallback to legacy nova / grok config
+        nova_config = self.settings.get("nova", {})
+        val = nova_config.get("max_tokens")
+        if val is not None:
+            return int(val)
+        grok_config = self.settings.get("grok", {})
+        val = grok_config.get("max_tokens")
+        if val is not None:
+            return int(val)
+        return 1024
 
     # Memory configuration
     @property
@@ -176,6 +279,14 @@ class Config:
         """Get list of additional allowed paths (outside projects_base_path)."""
         paths = self.settings.get("allowed_paths", [])
         return [Path(p).expanduser() for p in paths]
+
+    @property
+    def plugins_dir(self) -> Path:
+        """Get plugins directory path."""
+        configured = self.settings.get("plugins_dir")
+        if configured:
+            return Path(configured).expanduser()
+        return Path(self.config_dir).parent / "plugins"
 
     def get_project_list(self) -> List[dict]:
         """Get list of registered projects."""

@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -16,6 +15,8 @@ from .claude_runner import get_runner
 from .project_manager import get_project_manager
 from .memory import MemoryManager, MemoryCommands
 from .autonomous import AutonomousManager, AutonomousCommands
+from .plugin_loader import PluginLoader
+from .prd_builder import clean_json_string, extract_balanced_json, parse_prd_json
 
 logger = structlog.get_logger()
 
@@ -28,14 +29,24 @@ class SignalBot:
         self.runner = get_runner()
         self.project_manager = get_project_manager()
 
-        # Grok runner is optional
-        self.grok_runner = None
-        if self.config.grok_enabled:
+        # sidechannel assistant runner is optional (supports OpenAI and Grok providers)
+        self.sidechannel_runner = None
+        if self.config.sidechannel_assistant_enabled:
             try:
-                from .grok_runner import get_grok_runner
-                self.grok_runner = get_grok_runner()
+                from .sidechannel_runner import SidechannelRunner
+                self.sidechannel_runner = SidechannelRunner(
+                    api_url=self.config.sidechannel_assistant_api_url,
+                    api_key=self.config.sidechannel_assistant_api_key,
+                    model=self.config.sidechannel_assistant_model,
+                    max_tokens=self.config.sidechannel_assistant_max_tokens,
+                )
+                logger.info(
+                    "sidechannel_runner_initialized",
+                    provider=self.config.sidechannel_assistant_provider,
+                    model=self.config.sidechannel_assistant_model,
+                )
             except Exception as e:
-                logger.warning("grok_runner_unavailable", error=str(e))
+                logger.warning("sidechannel_runner_unavailable", error=str(e))
 
         self.session: Optional[aiohttp.ClientSession] = None
         self.running = False
@@ -61,6 +72,18 @@ class SignalBot:
         # Autonomous system (initialized after memory in start())
         self.autonomous_manager: Optional[AutonomousManager] = None
         self.autonomous_commands: Optional[AutonomousCommands] = None
+
+        # Plugin system
+        plugins_data_dir = Path(self.config.config_dir).parent / "data" / "plugins"
+        plugins_data_dir.mkdir(parents=True, exist_ok=True)
+        self.plugin_loader = PluginLoader(
+            plugins_dir=self.config.plugins_dir,
+            settings=self.config.settings,
+            send_message=self._send_message,
+            allowed_numbers=self.config.allowed_numbers,
+            data_dir=plugins_data_dir,
+        )
+        self.plugin_loader.discover_and_load()
 
     async def start(self):
         """Start the bot."""
@@ -91,13 +114,20 @@ class SignalBot:
             ),
         )
 
+        # Start plugins
+        await self.plugin_loader.start_all()
+
         logger.info("bot_started", account=self.account)
 
     async def stop(self):
         """Stop the bot."""
         self.running = False
+        # Stop plugins
+        await self.plugin_loader.stop_all()
         if self.autonomous_manager:
             await self.autonomous_manager.stop_loop()
+        if self.sidechannel_runner:
+            await self.sidechannel_runner.close()
         if self.session:
             await self.session.close()
         await self.runner.cancel()
@@ -132,8 +162,8 @@ class SignalBot:
             logger.warning("blocked_send_to_unauthorized", recipient=recipient[:6] + "...")
             return
 
-        # Add nova identifier to all messages
-        message = f"nova: {message}"
+        # Add sidechannel identifier to all messages
+        message = f"sidechannel: {message}"
 
         try:
             url = f"{self.config.signal_api_url}/v2/send"
@@ -389,6 +419,10 @@ class SignalBot:
             return await self.autonomous_commands.handle_learnings(sender, args)
 
         else:
+            # Check plugin commands
+            plugin_handler = self.plugin_loader.get_all_commands().get(command)
+            if plugin_handler:
+                return await plugin_handler(sender, args)
             return f"Unknown command: /{command}\nUse /help to see available commands."
 
     def _get_help(self) -> str:
@@ -421,13 +455,19 @@ Memory Commands (uses current project):
 
 /help - Show this help"""
 
-        if self.grok_runner:
+        if self.sidechannel_runner:
             help_text = """sidechannel Commands:
 
-nova (AI Assistant):
-  nova: <question> - Ask nova anything
+sidechannel (AI Assistant):
+  sidechannel: <question> - Ask anything
 
 """ + help_text[len("sidechannel Commands:\n\n"):]
+
+        # Append plugin help sections
+        for section in self.plugin_loader.get_all_help():
+            help_text += f"\n\n{section.title}:"
+            for cmd, desc in section.commands.items():
+                help_text += f"\n  /{cmd} - {desc}"
 
         return help_text
 
@@ -585,93 +625,6 @@ nova (AI Assistant):
         self._current_task = asyncio.create_task(run_prd_creation())
         logger.info("prd_creation_started", task=task_description[:50])
 
-    def _clean_json_string(self, json_str: str) -> str:
-        """Clean common JSON issues from LLM output."""
-        # Remove markdown code blocks if present
-        json_str = re.sub(r'^```(?:json)?\s*', '', json_str.strip())
-        json_str = re.sub(r'\s*```$', '', json_str)
-
-        # Replace smart quotes with regular quotes
-        json_str = json_str.replace('"', '"').replace('"', '"')
-        json_str = json_str.replace(''', "'").replace(''', "'")
-
-        # Remove trailing commas before } or ]
-        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
-
-        # Fix unescaped newlines inside strings
-        def escape_newlines_in_strings(match):
-            return match.group(0).replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-
-        json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', escape_newlines_in_strings, json_str)
-
-        # Remove control characters (except escaped ones)
-        json_str = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', ' ', json_str)
-
-        # Fix common issues with unescaped backslashes
-        json_str = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', json_str)
-
-        return json_str
-
-    async def _parse_prd_json(self, response: str, sender: str, update_step) -> dict:
-        """Parse PRD JSON from Claude's response with robust error handling and retry."""
-        # Extract JSON from response
-        json_match = re.search(r'\{[\s\S]*\}', response)
-        if not json_match:
-            raise ValueError("Response does not contain valid JSON structure")
-
-        json_str = json_match.group()
-
-        # Try parsing with increasingly aggressive cleanup
-        parse_attempts = [
-            ("basic", lambda s: s),
-            ("cleaned", self._clean_json_string),
-            ("aggressive", lambda s: self._clean_json_string(
-                re.sub(r'(?<!\\)"(?=[^"]*"[^"]*(?:"[^"]*"[^"]*)*":)', '\\"', s)
-            )),
-        ]
-
-        last_error = None
-        for attempt_name, cleaner in parse_attempts:
-            try:
-                cleaned = cleaner(json_str)
-                return json.loads(cleaned)
-            except json.JSONDecodeError as e:
-                last_error = e
-                logger.warning(f"json_parse_attempt_failed", attempt=attempt_name, error=str(e)[:100])
-                continue
-
-        # All attempts failed - try asking Claude to fix the JSON
-        await update_step("Step 3/5: Fixing malformed JSON (retry)...")
-
-        fix_prompt = f"""The following JSON has a syntax error. Fix ONLY the JSON syntax and return valid JSON.
-Do not add any explanation, just return the corrected JSON.
-
-Error: {str(last_error)[:200]}
-
-JSON to fix:
-{json_str[:3000]}"""
-
-        try:
-            success, fix_response = await self.runner.run_claude(fix_prompt, timeout=60)
-            if success:
-                fixed_match = re.search(r'\{[\s\S]*\}', fix_response)
-                if fixed_match:
-                    fixed_json = self._clean_json_string(fixed_match.group())
-                    return json.loads(fixed_json)
-        except Exception as e:
-            logger.warning("json_fix_retry_failed", error=str(e))
-
-        # If we still can't parse, raise with helpful context
-        error_pos = last_error.pos if last_error else 0
-        context_start = max(0, error_pos - 50)
-        context_end = min(len(json_str), error_pos + 50)
-        context = json_str[context_start:context_end]
-
-        raise ValueError(
-            f"Failed to parse JSON after multiple attempts. "
-            f"Error near: ...{context}..."
-        )
-
     async def _create_autonomous_prd(self, sender: str, task_description: str) -> str:
         """Create a PRD with stories and tasks from a complex task description.
 
@@ -749,7 +702,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             await update_step("Step 3/5: Parsing task breakdown...")
 
             # Parse the JSON response with robust error handling
-            breakdown = await self._parse_prd_json(response, sender, update_step)
+            breakdown = await parse_prd_json(response, self.runner, update_step)
 
             await update_step("Step 4/5: Creating PRD structure...")
 
@@ -863,32 +816,41 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             args = parts[1] if len(parts) > 1 else ""
 
             response = await self._handle_command(command, args, sender)
-        elif self._is_nova_query(message):
-            # Addressed to nova - general AI assistant mode
-            response = await self._nova_response(message)
         else:
-            # Treat non-command messages as /do commands if a project is selected
-            if self.project_manager.current_project:
-                # Check if a task is already running
-                if self._current_task and not self._current_task.done():
-                    elapsed = ""
-                    if self._current_task_start:
-                        mins = int((datetime.now() - self._current_task_start).total_seconds() / 60)
-                        elapsed = f" ({mins} min elapsed)"
-                    response = (
-                        f"A task is already running{elapsed}.\n"
-                        f"Current: {self._current_task_description[:100] if self._current_task_description else 'unknown'}...\n"
-                        f"Use /cancel to stop it first."
-                    )
+            # Check plugin message matchers
+            response = None
+            for matcher in self.plugin_loader.get_sorted_matchers():
+                if matcher.match_fn(message):
+                    response = await matcher.handle_fn(sender, message)
+                    break
+
+            if response is None and self._is_sidechannel_query(message):
+                # Addressed to sidechannel - general AI assistant mode
+                response = await self._sidechannel_response(message)
+            elif response is None:
+                # Treat non-command messages as /do commands if a project is selected
+                if self.project_manager.current_project:
+                    # Check if a task is already running
+                    if self._current_task and not self._current_task.done():
+                        elapsed = ""
+                        if self._current_task_start:
+                            mins = int((datetime.now() - self._current_task_start).total_seconds() / 60)
+                            elapsed = f" ({mins} min elapsed)"
+                        response = (
+                            f"A task is already running{elapsed}.\n"
+                            f"Current: {self._current_task_description[:100] if self._current_task_description else 'unknown'}...\n"
+                            f"Use /cancel to stop it first."
+                        )
+                    else:
+                        await self._send_message(sender, "Working on it...")
+                        self._start_background_task(sender, message, self.project_manager.current_project)
+                        return  # Response will be sent when task completes
                 else:
-                    await self._send_message(sender, "Working on it...")
-                    self._start_background_task(sender, message, self.project_manager.current_project)
-                    return  # Response will be sent when task completes
-            else:
-                response = (
-                    "No project selected. Use /select <project> first, "
-                    "or send a command like /help"
-                )
+                    response = (
+                        "No project selected. Use /select <project> first, "
+                        "or send a command like /help"
+                    )
+
 
         # If response is None, the task is running in background
         if response is None:
@@ -907,25 +869,25 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
 
         await self._send_message(sender, response)
 
-    def _is_nova_query(self, message: str) -> bool:
-        """Detect if a message is addressed to nova."""
-        if not self.grok_runner:
+    def _is_sidechannel_query(self, message: str) -> bool:
+        """Detect if a message is addressed to sidechannel assistant."""
+        if not self.sidechannel_runner:
             return False
         msg_lower = message.lower().strip()
-        # Match: "nova:", "nova,", "nova " followed by text, or just "nova"
-        if msg_lower.startswith("nova:") or msg_lower.startswith("nova,"):
+        # Match: "sidechannel:", "sidechannel,", "sidechannel " followed by text, or just "sidechannel"
+        if msg_lower.startswith("sidechannel:") or msg_lower.startswith("sidechannel,"):
             return True
-        if msg_lower.startswith("nova ") and len(msg_lower) > 5:
+        if msg_lower.startswith("sidechannel ") and len(msg_lower) > 12:
             return True
-        if msg_lower == "nova":
+        if msg_lower == "sidechannel":
             return True
         return False
 
-    async def _nova_response(self, message: str) -> str:
-        """Generate a nova response using Grok."""
-        if not self.grok_runner:
-            return "Grok AI is not enabled. Set grok.enabled: true in settings.yaml"
-        success, response = await self.grok_runner.ask_jarvis(message)
+    async def _sidechannel_response(self, message: str) -> str:
+        """Generate a sidechannel response using the configured provider."""
+        if not self.sidechannel_runner:
+            return "sidechannel assistant is not enabled. Set sidechannel_assistant.enabled: true in settings.yaml and provide OPENAI_API_KEY or GROK_API_KEY."
+        success, response = await self.sidechannel_runner.ask_jarvis(message)
         return response
 
     async def poll_messages(self):
