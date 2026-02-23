@@ -20,8 +20,15 @@ sidechannel/
 ├── bot.py              # Main bot: message routing, command dispatch
 ├── claude_runner.py    # Claude CLI subprocess with retry and error classification
 ├── config.py           # YAML/env configuration loader
+├── sidechannel_runner.py  # sidechannel AI assistant (OpenAI / Grok provider)
 ├── security.py         # Auth, rate limiting, path validation, input sanitization
 ├── project_manager.py  # Multi-project management
+├── plugin_base.py      # Plugin base class and PluginContext API
+├── plugin_loader.py    # Plugin auto-discovery and lifecycle management
+├── exceptions.py       # Structured exception hierarchy
+├── attachments.py      # Image download and processing
+├── prd_builder.py      # Robust JSON parsing for autonomous PRDs
+├── skill_registry.py   # Claude plugin discovery and matching
 ├── autonomous/
 │   ├── loop.py         # Parallel task dispatch with dependency resolution
 │   ├── executor.py     # Task execution with git safety and verification
@@ -64,6 +71,17 @@ black --check sidechannel/
 # Run tests
 python -m pytest tests/ -v --tb=short
 ```
+
+## Writing Plugins
+
+sidechannel supports custom plugins in the `plugins/` directory. See `plugins/README.md` for the full guide.
+
+Quick start:
+1. Create `plugins/my_plugin/plugin.py`
+2. Subclass `SidechannelPlugin` from `sidechannel.plugin_base`
+3. Override `commands()`, `message_matchers()`, `on_start()`, `on_stop()`, `help_sections()` as needed
+4. Add config to `config/settings.yaml` under `plugins.my_plugin`
+5. Restart the bot — your plugin loads automatically
 
 ## Code Style
 

@@ -5,6 +5,46 @@ All notable changes to sidechannel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-23
+
+### Added
+- **Plugin framework** — extend sidechannel with custom plugins in `plugins/` directory
+- **Plugin base class** (`SidechannelPlugin`) with commands, message matchers, lifecycle hooks, and help sections
+- **Plugin auto-discovery** — plugins loaded automatically from `plugins/<name>/plugin.py`
+- **PluginContext API** — safe interface for plugins (send_message, config, env, logger)
+- **Priority message routing** — plugins can intercept messages before default routing
+- **Daily verse plugin** — scheduled Bible verse delivery (extracted from signal bot)
+- **BluOS music plugin** — multi-room speaker control (extracted from signal bot)
+- **Sync script** (`sync.sh`) — sync sidechannel core into deployment instances
+- **Exception hierarchy** (`exceptions.py`) — structured error classification with retry support
+- **Attachment handling** (`attachments.py`) — image download and processing with size limits
+- **PRD builder** (`prd_builder.py`) — robust JSON parsing for autonomous PRDs
+- **Skill registry** (`skill_registry.py`) — Claude plugin discovery and matching
+
+### Security
+- **XML entity attack prevention** — BluOS controller rejects DTD/ENTITY declarations in XML responses
+- **SecurityError hardened** — category is always PERMANENT and cannot be overridden
+- **Attachment size limit** — downloads capped at 50MB to prevent memory exhaustion
+
+### Changed
+- Bot refactored to use `prd_builder` module instead of inline JSON parsing methods
+- Plugin loader uses insertion-order class discovery (Python 3.7+ dict ordering)
+
+## [1.1.0] - 2026-02-23
+
+### Added
+- **OpenAI provider support** for sidechannel AI assistant — users can now choose between OpenAI and Grok as the backend provider
+- **Provider auto-detection** — if only `OPENAI_API_KEY` is set, sidechannel uses OpenAI automatically; if only `GROK_API_KEY`, it uses Grok
+- **Shared HTTP session** for sidechannel runner — reuses connections instead of creating per-request
+
+### Fixed
+- `aiohttp.ClientTimeout` exception bug — now correctly catches `asyncio.TimeoutError`
+
+### Changed
+- Renamed "nova" assistant to "sidechannel" throughout the codebase
+- `sidechannel_assistant:` config section replaces legacy `nova:` / `grok:` sections (backward compatible)
+- `sidechannel_runner.py` replaces `grok_runner.py` / `nova_runner.py` with configurable provider settings
+
 ## [1.0.0] - 2026-02-23
 
 ### Added
@@ -23,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Task type detection** - automatic classification (feature, bugfix, refactor, test, docs, config)
 - **Adaptive effort levels** - task complexity mapped to execution effort
 - Project management with multi-project support
-- Nova assistant (optional Grok integration, disabled by default)
+- sidechannel AI assistant (optional OpenAI/Grok integration, disabled by default)
 - Interactive installer with Signal QR code device linking
 - Systemd service support
 - Comprehensive test suite
