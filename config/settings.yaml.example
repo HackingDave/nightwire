@@ -66,3 +66,9 @@ sidechannel_assistant:
 #       main_floor: { name: "Main Floor", ip: "10.0.0.1" }
 #     groups:
 #       inside: [main_floor]
+
+# Plugin allowlist — if set, only these plugins will be loaded.
+# Omit or leave empty to load all plugins.
+# plugin_allowlist:
+#   - daily_verse
+#   - bluos_music

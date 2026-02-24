@@ -68,6 +68,12 @@ class PluginLoader:
         if plugins_str not in sys.path:
             sys.path.append(plugins_str)
 
+        # Plugin allowlist: if configured, only load listed plugins
+        allowlist = self._settings.get("plugin_allowlist")
+        if allowlist is not None and not isinstance(allowlist, list):
+            logger.error("plugin_allowlist_invalid_type", type=type(allowlist).__name__)
+            allowlist = None
+
         for plugin_dir in sorted(self.plugins_dir.iterdir()):
             if not plugin_dir.is_dir():
                 continue
@@ -76,6 +82,16 @@ class PluginLoader:
                 continue
 
             plugin_name = plugin_dir.name
+
+            # Enforce allowlist if configured
+            if allowlist is not None and plugin_name not in allowlist:
+                logger.warning(
+                    "plugin_blocked_not_in_allowlist",
+                    plugin=plugin_name,
+                    allowlist=allowlist,
+                )
+                continue
+
             try:
                 self._load_plugin(plugin_name, plugin_file)
             except Exception as e:

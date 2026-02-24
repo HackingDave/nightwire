@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `@require_valid_project_path` decorator for consistent path validation on functions that accept a path argument
 - `tests/test_security.py` with tests for the new decorator
+- Plugin loader allowlist (`plugin_allowlist` config option)
 
 ### Security
 - Path validation enforced in `ClaudeRunner.set_project()`
