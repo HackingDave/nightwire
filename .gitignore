@@ -52,6 +52,9 @@ tests/
 # Internal plans/docs
 docs/plans/
 
+# Claude Code config (contains personal info)
+CLAUDE.md
+
 # Signal data
 signal-data/
 signal-cli-config/
