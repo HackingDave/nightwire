@@ -209,18 +209,48 @@ if [ "$INSTALL_MODE" = "docker" ]; then
     echo -e "${BLUE}Checking prerequisites...${NC}"
 
     if ! command -v docker &> /dev/null; then
-        echo -e "${RED}Error: Docker not found${NC}"
-        echo -e "Install Docker: https://docs.docker.com/get-docker/"
+        echo -e "  ${RED}✗ Docker not found${NC}"
+        echo ""
+        if [ "$(uname)" = "Darwin" ]; then
+            echo -e "    Install Docker Desktop: ${CYAN}https://docs.docker.com/desktop/install/mac-install/${NC}"
+        else
+            echo -e "    Install Docker: ${CYAN}https://docs.docker.com/get-docker/${NC}"
+        fi
         exit 1
     fi
     echo -e "  ${GREEN}✓${NC} Docker"
 
     if ! docker info &> /dev/null; then
-        echo -e "${RED}Error: Docker daemon is not running${NC}"
-        echo -e "Start Docker: sudo systemctl start docker"
-        exit 1
+        echo -e "  ${YELLOW}!${NC} Docker is not running"
+        echo ""
+        if [ "$(uname)" = "Darwin" ]; then
+            echo -e "    Start Docker Desktop: ${CYAN}open -a Docker${NC}"
+        else
+            echo -e "    Start Docker: ${CYAN}sudo systemctl start docker${NC}"
+        fi
+        echo ""
+        read -p "    Start Docker and press Enter when it's ready (or Ctrl+C to quit)..."
+        echo ""
+
+        # Wait up to 60 seconds for Docker to be ready
+        echo -e "    Waiting for Docker to start..."
+        TRIES=0
+        while [ $TRIES -lt 30 ]; do
+            if docker info &> /dev/null; then
+                break
+            fi
+            sleep 2
+            TRIES=$((TRIES + 1))
+        done
+
+        if ! docker info &> /dev/null; then
+            echo -e "  ${RED}Docker still not running.${NC} Please start Docker and re-run the installer."
+            exit 1
+        fi
+        echo -e "  ${GREEN}✓${NC} Docker is running"
+    else
+        echo -e "  ${GREEN}✓${NC} Docker running"
     fi
-    echo -e "  ${GREEN}✓${NC} Docker daemon running"
 
     # Check for docker compose (v2 plugin or standalone)
     if docker compose version &> /dev/null; then
@@ -561,17 +591,39 @@ elif command -v docker &> /dev/null; then
         echo -e "  ${YELLOW}!${NC} Docker installed but not running"
         echo ""
         if [ "$(uname)" = "Darwin" ]; then
-            echo -e "    Start Docker Desktop and re-run the installer, or"
+            echo -e "    Start Docker Desktop: ${CYAN}open -a Docker${NC}"
         else
-            echo -e "    Run ${CYAN}sudo systemctl start docker${NC} and re-run the installer, or"
+            echo -e "    Start Docker: ${CYAN}sudo systemctl start docker${NC}"
         fi
-        read -p "    skip Signal setup for now? [y/N] " -n 1 -r
         echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "    1) Wait — I'll start Docker now"
+        echo "    2) Skip Signal setup for now"
+        echo ""
+        read -p "    > " DOCKER_WAIT_CHOICE
+        echo ""
+        if [ "$DOCKER_WAIT_CHOICE" = "2" ]; then
             SKIP_SIGNAL=true
             DOCKER_OK=true
         else
-            exit 1
+            read -p "    Press Enter when Docker is running..."
+            echo ""
+            echo -e "    Waiting for Docker..."
+            TRIES=0
+            while [ $TRIES -lt 30 ]; do
+                if docker info &> /dev/null; then
+                    break
+                fi
+                sleep 2
+                TRIES=$((TRIES + 1))
+            done
+            if docker info &> /dev/null; then
+                echo -e "  ${GREEN}✓${NC} Docker is running"
+                DOCKER_OK=true
+            else
+                echo -e "  ${YELLOW}Docker still not ready.${NC} Skipping Signal setup."
+                SKIP_SIGNAL=true
+                DOCKER_OK=true
+            fi
         fi
     fi
 else
