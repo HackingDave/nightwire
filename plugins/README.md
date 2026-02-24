@@ -16,7 +16,7 @@ vim plugins/my_plugin/plugin.py
 # Edit config/settings.yaml, add plugins.my_plugin section
 
 # 4. Restart the bot
-systemctl restart signal-claude-bot
+systemctl --user restart sidechannel
 ```
 
 ## Plugin Structure
@@ -346,6 +346,3 @@ class TestMyPlugin:
 
 Run tests: `python -m pytest tests/test_plugin_my_plugin.py -v`
 
-## Examples
-
-See the plugin examples in this directory for real-world patterns including API integration, background scheduling, and config-driven management.
