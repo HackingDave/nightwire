@@ -15,15 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker mode Signal pairing** — cleaner QR code flow with proper verification and retry
 
 ### Added
+- **Docker mode projects mount** — host projects directory mounted into container so Claude can access your code
+- **Claude CLI in Docker image** — Dockerfile now installs Claude CLI so /ask, /do, /complex actually work
+- **Projects directory prompt** — Docker installer asks for your projects path and configures the mount
+- **Claude auth mount** — `~/.claude` mounted into container so Claude CLI auth persists
 - **macOS launchd support** — installer creates `com.sidechannel.bot.plist` for auto-start on login
 - **Signal pairing retry** — installer offers a second verification attempt if first scan isn't detected
 - **Auto Docker install** — on Linux (apt/dnf), installer offers to install Docker if missing
-- **Remote session detection** — installer auto-detects SSH sessions and handles Signal bridge exposure/lockdown
+- **Remote QR code access** — both Docker and local modes ask if you need to scan from another device
 
 ### Fixed
+- Docker mode can now access host project files (previously only saw files inside the container)
 - Raw ANSI escape codes (`\033[0;36m`) no longer appear in installer output
 - Installer no longer offers broken "Native signal-cli" option that can't provide the required REST API
 - Uninstaller now removes macOS launchd plist in addition to Linux systemd service
+- Buffered keystrokes during long installs no longer skip interactive prompts
+- Signal bridge QR code endpoint polled until actually ready (fixes "no data to encode" error)
+- macOS-specific Docker start instructions (`open -a Docker` instead of `systemctl`)
 
 ## [1.2.0] - 2026-02-24
 

@@ -26,6 +26,8 @@ services:
     volumes:
       - ./config:/app/config
       - ./data:/app/data
+      - ${PROJECTS_DIR:?Set PROJECTS_DIR in .env}:/projects
+      - ${CLAUDE_HOME:-~/.claude}:/root/.claude
     env_file:
       - ./config/.env
     environment:

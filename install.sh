@@ -400,6 +400,9 @@ allowed_numbers:
 # Signal CLI REST API (container name resolves via Docker network)
 signal_api_url: "http://signal-api:8080"
 
+# Projects directory (mounted from host into container at /projects)
+projects_base_path: "/projects"
+
 # Memory System
 memory:
   session_timeout: 30
@@ -475,6 +478,43 @@ EOF
             fi
         fi
     fi
+
+    # -------------------------------------------------------------------------
+    # Projects directory (Docker mode)
+    # -------------------------------------------------------------------------
+    echo ""
+    echo -e "${BLUE}Projects Directory${NC}"
+    echo ""
+    echo "  sidechannel needs access to your code projects."
+    echo "  This directory will be mounted into the container."
+    echo ""
+    DEFAULT_PROJECTS_DIR="$HOME/projects"
+    echo -e "  Projects directory [${CYAN}$DEFAULT_PROJECTS_DIR${NC}]:"
+    read -p "  > " CUSTOM_PROJECTS_DIR
+
+    PROJECTS_DIR="${CUSTOM_PROJECTS_DIR:-$DEFAULT_PROJECTS_DIR}"
+    # Expand ~ if present
+    PROJECTS_DIR="${PROJECTS_DIR/#\~/$HOME}"
+
+    if [ ! -d "$PROJECTS_DIR" ]; then
+        read -p "  Directory doesn't exist. Create it? [Y/n] " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            mkdir -p "$PROJECTS_DIR"
+            echo -e "  ${GREEN}✓${NC} Created $PROJECTS_DIR"
+        fi
+    else
+        echo -e "  ${GREEN}✓${NC} Projects: $PROJECTS_DIR"
+    fi
+
+    # Write compose-level .env (next to docker-compose.yml) for volume mounts
+    COMPOSE_ENV="$INSTALL_DIR/.env"
+    cat > "$COMPOSE_ENV" << EOF
+# Docker Compose environment (used for volume mounts)
+PROJECTS_DIR=$PROJECTS_DIR
+CLAUDE_HOME=$HOME/.claude
+EOF
+    echo -e "  ${GREEN}✓${NC} Docker Compose configured"
 
     # -------------------------------------------------------------------------
     # Signal Pairing (Docker mode)
