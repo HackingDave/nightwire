@@ -7,14 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Help text now shows all commands including /add, /new, /status, /summary, /forget, /preferences
-- Message prefix changed from "sidechannel:" to "[sidechannel]" for cleaner formatting
-- Cleaner status output with compact elapsed time and autonomous loop info
-- Reduced verbose step notifications during PRD creation
-- Consolidated duplicate task-busy checks into `_check_task_busy()` helper
-
-## [1.2.0] - 2026-02-23
+## [1.2.0] - 2026-02-24
 
 ### Added
 - **Plugin framework** — extend sidechannel with custom plugins in `plugins/` directory
@@ -35,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Attachment size limit** — downloads capped at 50MB to prevent memory exhaustion
 
 ### Changed
+- Help text now shows all commands including /add, /new, /status, /summary, /forget, /preferences
+- Message prefix changed from "sidechannel:" to "[sidechannel]" for cleaner formatting
+- Cleaner status output with compact elapsed time and autonomous loop info
+- Reduced verbose step notifications during PRD creation
+- Consolidated duplicate task-busy checks into `_check_task_busy()` helper
 - Bot refactored to use `prd_builder` module instead of inline JSON parsing methods
 - Plugin loader uses insertion-order class discovery (Python 3.7+ dict ordering)
 
