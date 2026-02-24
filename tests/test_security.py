@@ -42,3 +42,15 @@ def test_require_valid_project_path_works_with_path_kwarg():
         mock_validate.return_value = Path("/valid")
         result = my_func(path="/valid")
         assert result == "ok"
+
+
+def test_claude_runner_set_project_validates_path():
+    """ClaudeRunner.set_project should reject invalid paths."""
+    with patch("sidechannel.security.validate_project_path") as mock_validate:
+        mock_validate.return_value = None
+        with patch("sidechannel.claude_runner.get_config"):
+            from sidechannel.claude_runner import ClaudeRunner
+            runner = ClaudeRunner.__new__(ClaudeRunner)
+            runner.current_project = None
+            with pytest.raises(ValueError, match="validation failed"):
+                runner.set_project(Path("/etc/shadow"))

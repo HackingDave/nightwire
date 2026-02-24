@@ -91,8 +91,12 @@ class ClaudeRunner:
 
     def set_project(self, project_path: Path):
         """Set the current project directory."""
-        self.current_project = project_path
-        logger.info("project_set", path=str(project_path))
+        from .security import validate_project_path
+        validated = validate_project_path(str(project_path))
+        if validated is None:
+            raise ValueError(f"Project path validation failed: access denied")
+        self.current_project = validated
+        logger.info("project_set", path=str(validated))
 
     async def run_claude(
         self,
