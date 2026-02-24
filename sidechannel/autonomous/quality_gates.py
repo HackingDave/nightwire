@@ -12,6 +12,23 @@ from .models import QualityGateResult
 
 logger = structlog.get_logger()
 
+# Dangerous patterns for security scanning
+_DANGEROUS_PATTERNS = [
+    (r'\bos\.system\s*\(', "os.system() call — use subprocess with argument list instead"),
+    (r'\bos\.popen\s*\(', "os.popen() call — use subprocess with argument list instead"),
+    (r'subprocess\.\w+\([^)]*shell\s*=\s*True', "subprocess with shell=True — use argument list"),
+    (r'\beval\s*\(', "eval() call — potential code injection"),
+    (r'\bexec\s*\(', "exec() call — potential code injection"),
+    (r'__import__\s*\(', "__import__() call — suspicious dynamic import"),
+    (r'(?:API_KEY|SECRET|PASSWORD|TOKEN)\s*=\s*["\'][^"\']{8,}["\']',
+     "Possible hardcoded secret/API key"),
+    (r'requests\.(?:get|post|put|delete)\s*\(\s*["\']https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}',
+     "HTTP request to raw IP address — possible data exfiltration"),
+    (r'urllib\.request\.urlopen\s*\(\s*["\']https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}',
+     "URL request to raw IP address — possible data exfiltration"),
+    (r'\bpickle\.loads?\s*\(', "pickle.load() — deserializing untrusted data is dangerous"),
+]
+
 
 class QualityGateRunner:
     """Runs quality checks (tests, typecheck, lint) on projects."""
@@ -25,6 +42,36 @@ class QualityGateRunner:
         self.test_timeout = test_timeout
         self.typecheck_timeout = typecheck_timeout
         self.lint_timeout = lint_timeout
+
+    def security_scan(self, project_path: Path) -> list:
+        """Scan project files for dangerous patterns.
+
+        Returns list of finding strings (empty if clean).
+        Scans only Python files to avoid false positives in data files.
+        """
+        findings = []
+
+        # Scan Python files only
+        for py_file in project_path.rglob("*.py"):
+            # Skip venv, __pycache__, .git
+            parts = py_file.parts
+            if any(skip in parts for skip in ("venv", ".venv", "__pycache__", ".git", "node_modules")):
+                continue
+
+            try:
+                content = py_file.read_text(errors="replace")
+            except OSError:
+                continue
+
+            relative = py_file.relative_to(project_path)
+            for line_num, line in enumerate(content.splitlines(), 1):
+                for pattern, description in _DANGEROUS_PATTERNS:
+                    if re.search(pattern, line):
+                        findings.append(
+                            f"{relative}:{line_num}: {description}"
+                        )
+
+        return findings
 
     async def snapshot_baseline(self, project_path: Path) -> Optional[QualityGateResult]:
         """Take a test baseline snapshot BEFORE task execution.
