@@ -249,6 +249,14 @@ fi
 # =============================================================================
 if [ "$INSTALL_MODE" = "docker" ]; then
 
+    # Docker mode uses the repo directory directly (Dockerfile and source are here)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    INSTALL_DIR="$SCRIPT_DIR"
+    CONFIG_DIR="$INSTALL_DIR/config"
+    DATA_DIR="$INSTALL_DIR/data"
+    LOGS_DIR="$INSTALL_DIR/logs"
+    SIGNAL_DATA_DIR="$INSTALL_DIR/signal-data"
+
     # -------------------------------------------------------------------------
     # Docker prerequisites
     # -------------------------------------------------------------------------
@@ -329,52 +337,29 @@ if [ "$INSTALL_MODE" = "docker" ]; then
     echo ""
 
     # -------------------------------------------------------------------------
-    # Create directory structure
+    # Create data directories (source files are already in the repo)
     # -------------------------------------------------------------------------
-    echo -e "${BLUE}Creating directory structure...${NC}"
+    echo -e "${BLUE}Setting up directories...${NC}"
 
-    mkdir -p "$INSTALL_DIR"
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$DATA_DIR"
     mkdir -p "$LOGS_DIR"
     mkdir -p "$SIGNAL_DATA_DIR"
 
-    echo -e "  ${GREEN}✓${NC} Created $INSTALL_DIR"
-
-    # -------------------------------------------------------------------------
-    # Copy source files
-    # -------------------------------------------------------------------------
-    echo -e "${BLUE}Copying source files...${NC}"
-
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    if [ -d "$SCRIPT_DIR/sidechannel" ]; then
-        cp -r "$SCRIPT_DIR/sidechannel" "$INSTALL_DIR/"
-        echo -e "  ${GREEN}✓${NC} Copied sidechannel package"
-    else
-        echo -e "${RED}Error: sidechannel package not found in $SCRIPT_DIR${NC}"
+    # Verify source files exist
+    if [ ! -d "$INSTALL_DIR/sidechannel" ]; then
+        echo -e "${RED}Error: sidechannel package not found in $INSTALL_DIR${NC}"
+        echo "  Run this installer from the sidechannel repo directory."
         exit 1
     fi
 
-    # Copy plugins if present
-    if [ -d "$SCRIPT_DIR/plugins" ]; then
-        cp -r "$SCRIPT_DIR/plugins" "$INSTALL_DIR/"
-        echo -e "  ${GREEN}✓${NC} Copied plugins"
+    # Copy config templates if not already present
+    if [ -d "$INSTALL_DIR/config" ]; then
+        cp -n "$INSTALL_DIR/config/"*.example "$CONFIG_DIR/" 2>/dev/null || true
+        cp -n "$INSTALL_DIR/config/CLAUDE.md" "$CONFIG_DIR/" 2>/dev/null || true
     fi
 
-    cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/"
-
-    # Copy Docker files
-    cp "$SCRIPT_DIR/Dockerfile" "$INSTALL_DIR/"
-    cp "$SCRIPT_DIR/docker-compose.yml" "$INSTALL_DIR/"
-    echo -e "  ${GREEN}✓${NC} Copied Docker files"
-
-    # Copy config templates
-    if [ -d "$SCRIPT_DIR/config" ]; then
-        cp "$SCRIPT_DIR/config/"*.example "$CONFIG_DIR/" 2>/dev/null || true
-        cp "$SCRIPT_DIR/config/CLAUDE.md" "$CONFIG_DIR/" 2>/dev/null || true
-        echo -e "  ${GREEN}✓${NC} Copied config templates"
-    fi
+    echo -e "  ${GREEN}✓${NC} Ready ($INSTALL_DIR)"
 
     # -------------------------------------------------------------------------
     # Interactive configuration (same prompts, with fixed sed)
