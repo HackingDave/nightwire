@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Auto-update configuration properties (`auto_update.enabled`, `auto_update.check_interval`, `auto_update.branch`)
+- `AutoUpdater` core module (`sidechannel/updater.py`) with git-based update detection, admin notification, safe apply with rollback, and background check loop
 
 ## [1.5.3] - 2026-02-24
 
