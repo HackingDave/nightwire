@@ -327,9 +327,9 @@ allowed_numbers:
 signal_api_url: "http://127.0.0.1:8080"
 
 # Claude CLI settings
-claude:
-  timeout: 600
-  max_turns: 15
+claude_timeout: 600         # Max seconds per Claude invocation
+claude_max_turns: 15        # Max conversation turns per invocation
+# claude_path: "/usr/local/bin/claude"  # Override Claude CLI path
 
 # Memory System
 memory:

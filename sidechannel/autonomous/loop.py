@@ -70,7 +70,7 @@ class AutonomousLoop:
         # Parallel execution tracking
         self._active_workers: dict[int, asyncio.Task] = {}  # task_id -> asyncio.Task
         self._active_task_ids: Set[int] = set()
-        self._worker_semaphore: Optional[asyncio.Semaphore] = None
+        self._worker_semaphore = asyncio.Semaphore(max_parallel)
 
     @property
     def is_running(self) -> bool:
@@ -409,7 +409,7 @@ class AutonomousLoop:
             self._tasks_failed_today += 1
             await self._notify(
                 task.phone_number,
-                f"Task FAILED ({type(e).__name__}): {task.title}\n{str(e)[:200]}"
+                f"Task FAILED: {task.title}\nCheck logs for details."
             )
         except (OSError, asyncio.TimeoutError, RuntimeError, ValueError) as e:
             logger.error("task_processing_error", task_id=task.id, error=str(e), exc_type=type(e).__name__)
@@ -419,7 +419,7 @@ class AutonomousLoop:
             self._tasks_failed_today += 1
             await self._notify(
                 task.phone_number,
-                f"Task FAILED ({type(e).__name__}): {task.title}\n{str(e)[:200]}"
+                f"Task FAILED: {task.title}\nCheck logs for details."
             )
         finally:
             if self._current_task_id == task.id:

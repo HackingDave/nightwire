@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generated `run.sh` now has `set -e`, guards `.env` source, uses `exec`
 - Added `curl` prerequisite check to installer
 - Docker container restart race: use `docker rm -f` instead of stop+rm to prevent port conflicts from restart policy
+- Claude config format: README and `settings.yaml.example` showed nested `claude:` block but code reads flat keys (`claude_timeout`, `claude_max_turns`)
+- `.env.example` wrongly labeled `ANTHROPIC_API_KEY` as "Required" (Claude CLI handles its own auth)
+
+### Security
+- Autonomous task failure notifications no longer leak exception types and internal error details to users
 
 ## [1.3.0] - 2026-02-24
 

@@ -61,11 +61,6 @@ class Config:
             if not isinstance(n, str) or not n.startswith("+") or not n[1:].isdigit():
                 logger.error("invalid_phone_number_format", number="..." + str(n)[-4:])
 
-        # Check claude config is a dict
-        claude_config = self.settings.get("claude", {})
-        if not isinstance(claude_config, dict):
-            logger.error("config_invalid_type", key="claude", expected="dict")
-
         # Check autonomous config types
         auto_config = self.settings.get("autonomous", {})
         if isinstance(auto_config, dict):
