@@ -20,6 +20,7 @@ from .project_manager import get_project_manager
 from .memory import MemoryManager, MemoryCommands
 from .autonomous import AutonomousManager, AutonomousCommands
 from .plugin_loader import PluginLoader
+from .updater import AutoUpdater
 from .prd_builder import clean_json_string, extract_balanced_json, parse_prd_json
 
 logger = structlog.get_logger()
@@ -83,6 +84,9 @@ class SignalBot:
         self.autonomous_manager: Optional[AutonomousManager] = None
         self.autonomous_commands: Optional[AutonomousCommands] = None
 
+        # Auto-updater (initialized in start() if enabled)
+        self.updater: Optional[AutoUpdater] = None
+
         # Plugin system
         plugins_data_dir = Path(self.config.config_dir).parent / "data" / "plugins"
         plugins_data_dir.mkdir(parents=True, exist_ok=True)
@@ -133,6 +137,14 @@ class SignalBot:
         # Start plugins
         await self.plugin_loader.start_all()
 
+        # Start auto-updater if enabled
+        if self.config.auto_update_enabled:
+            self.updater = AutoUpdater(
+                config=self.config,
+                send_message=self._send_message,
+            )
+            await self.updater.start()
+
         logger.info("bot_started", account=self.account)
 
     async def stop(self):
@@ -142,6 +154,8 @@ class SignalBot:
         self.running = False
         # Stop plugins
         await self.plugin_loader.stop_all()
+        if self.updater:
+            await self.updater.stop()
         if self.autonomous_manager:
             await self.autonomous_manager.stop_loop()
         if self.sidechannel_runner:
@@ -451,6 +465,14 @@ class SignalBot:
                 return "Usage: /sidechannel <question>\nAsk the AI assistant anything."
             return await self._sidechannel_response(args)
 
+        elif command == "update":
+            # Only admin (first allowed number) can trigger updates
+            if not self.config.allowed_numbers or sender != self.config.allowed_numbers[0]:
+                return "Only the admin can trigger updates."
+            if not self.updater:
+                return "Auto-update is not enabled. Set auto_update.enabled: true in settings.yaml."
+            return await self.updater.apply_update()
+
         else:
             # Check plugin commands
             plugin_handler = self.plugin_loader.get_all_commands().get(command)
@@ -494,6 +516,11 @@ Memory:
   /forget all|preferences|today - Delete data
   /preferences - View stored preferences
   /global <cmd> - Cross-project memory commands"""
+
+        help_text += """
+
+System:
+  /update - Apply a pending update (admin only)"""
 
         if self.sidechannel_runner:
             help_text = """sidechannel Commands:
