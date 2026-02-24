@@ -149,8 +149,9 @@ if [ "$UNINSTALL" = true ]; then
     fi
 
     # --- Stop Docker containers ---
+    # Checks for legacy "sidechannel" container from older Docker installs
     if command -v docker &> /dev/null; then
-        for CONTAINER in sidechannel signal-api; do
+        for CONTAINER in signal-api sidechannel; do
             if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
                 echo -e "${BLUE}Stopping Docker container: ${CONTAINER}...${NC}"
                 docker stop "$CONTAINER" 2>/dev/null || true
