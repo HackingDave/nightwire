@@ -487,6 +487,24 @@ EOF
     echo ""
 
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+
+        # Ask about remote access for QR code scanning
+        SIGNAL_BIND="127.0.0.1"
+        DOCKER_REMOTE_MODE=false
+        if [ -n "$SSH_CONNECTION" ]; then
+            echo -e "  ${YELLOW}Remote session detected.${NC}"
+            echo ""
+        fi
+        read -p "  Will you scan the QR code from another device (e.g., SSH'd in)? [y/N] " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            DOCKER_REMOTE_MODE=true
+            SIGNAL_BIND="0.0.0.0"
+            echo -e "  Signal bridge will be temporarily exposed on all interfaces."
+            echo -e "  It will be locked to localhost after pairing."
+            echo ""
+        fi
+
         echo -e "  Starting Signal bridge for pairing..."
 
         docker stop signal-api 2>/dev/null || true
@@ -495,7 +513,7 @@ EOF
         docker run -d \
             --name signal-api \
             --restart unless-stopped \
-            -p "127.0.0.1:8080:8080" \
+            -p "$SIGNAL_BIND:8080:8080" \
             -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
             -e MODE=native \
             bbernhard/signal-cli-rest-api:0.80
@@ -519,7 +537,13 @@ EOF
                 echo ""
             fi
 
-            echo -e "    Or open in browser: ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=sidechannel${NC}"
+            if [ "$DOCKER_REMOTE_MODE" = true ]; then
+                SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+                [ -z "$SERVER_IP" ] && SERVER_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "<your-server-ip>")
+                echo -e "    Open in browser: ${CYAN}http://${SERVER_IP}:8080/v1/qrcodelink?device_name=sidechannel${NC}"
+            else
+                echo -e "    Or open in browser: ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=sidechannel${NC}"
+            fi
             echo ""
 
             flush_stdin
@@ -535,6 +559,26 @@ EOF
                 echo -e "  ${GREEN}✓${NC} Device linked: $LINKED_NUMBER"
             else
                 echo -e "  ${YELLOW}Could not verify link. Docker Compose will restart the bridge.${NC}"
+            fi
+
+            # Lock down to localhost after pairing if remote mode was used
+            if [ "$DOCKER_REMOTE_MODE" = true ]; then
+                echo -e "  Securing Signal bridge to localhost..."
+                docker stop signal-api 2>/dev/null || true
+                docker rm signal-api 2>/dev/null || true
+
+                docker run -d \
+                    --name signal-api \
+                    --restart unless-stopped \
+                    -p 127.0.0.1:8080:8080 \
+                    -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+                    -e MODE=native \
+                    bbernhard/signal-cli-rest-api:0.80
+
+                sleep 3
+                if docker ps | grep -q signal-api; then
+                    echo -e "  ${GREEN}✓${NC} Signal bridge secured (localhost only)"
+                fi
             fi
         else
             echo ""
@@ -940,23 +984,21 @@ if [ "$SKIP_SIGNAL" = false ]; then
 
     echo -e "  Starting Signal bridge..."
 
-    # Auto-detect remote/headless
+    # Ask about remote access for QR code scanning
     SIGNAL_BIND="127.0.0.1"
     REMOTE_MODE=false
     if [ -n "$SSH_CONNECTION" ]; then
-        echo ""
         echo -e "  ${YELLOW}Remote session detected.${NC}"
-        echo "  The Signal API will be temporarily exposed for QR code access,"
-        echo "  then locked to localhost after pairing."
         echo ""
-        read -p "  Continue? [Y/n] " -n 1 -r
+    fi
+    read -p "  Will you scan the QR code from another device (e.g., SSH'd in)? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        REMOTE_MODE=true
+        SIGNAL_BIND="0.0.0.0"
+        echo -e "  Signal bridge will be temporarily exposed on all interfaces."
+        echo -e "  It will be locked to localhost after pairing."
         echo ""
-        if [[ $REPLY =~ ^[Nn]$ ]]; then
-            SKIP_SIGNAL=true
-        else
-            REMOTE_MODE=true
-            SIGNAL_BIND="0.0.0.0"
-        fi
     fi
 
     if [ "$SKIP_SIGNAL" = false ]; then
@@ -996,8 +1038,8 @@ if [ "$SKIP_SIGNAL" = false ]; then
 
             if [ "$REMOTE_MODE" = true ]; then
                 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-                [ -z "$SERVER_IP" ] && SERVER_IP="<your-server-ip>"
-                echo -e "    Or open in browser: ${CYAN}http://${SERVER_IP}:8080/v1/qrcodelink?device_name=sidechannel${NC}"
+                [ -z "$SERVER_IP" ] && SERVER_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "<your-server-ip>")
+                echo -e "    Open in browser: ${CYAN}http://${SERVER_IP}:8080/v1/qrcodelink?device_name=sidechannel${NC}"
             else
                 echo -e "    Or open in browser: ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=sidechannel${NC}"
             fi
