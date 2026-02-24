@@ -258,6 +258,20 @@ class ClaudeRunner:
             }
 
             effective_cwd = project_path or self.current_project
+
+            # Optionally wrap in Docker sandbox
+            from .sandbox import build_sandbox_command, SandboxConfig
+            sandbox_settings = self.config.sandbox_config
+            if sandbox_settings.get("enabled", False):
+                sandbox_cfg = SandboxConfig(
+                    enabled=True,
+                    image=sandbox_settings.get("image", "python:3.11-slim"),
+                    network=sandbox_settings.get("network", False),
+                    memory_limit=sandbox_settings.get("memory_limit", "2g"),
+                    cpu_limit=sandbox_settings.get("cpu_limit", 2.0),
+                )
+                cmd = build_sandbox_command(list(cmd), effective_cwd, sandbox_cfg)
+
             self._running_process = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(effective_cwd),

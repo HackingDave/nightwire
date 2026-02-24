@@ -312,6 +312,17 @@ class Config:
             return Path(configured).expanduser()
         return Path(self.config_dir).parent / "plugins"
 
+    @property
+    def sandbox_enabled(self) -> bool:
+        """Whether Docker sandbox is enabled for task execution."""
+        sandbox_config = self.settings.get("sandbox", {})
+        return sandbox_config.get("enabled", False)
+
+    @property
+    def sandbox_config(self) -> dict:
+        """Get sandbox configuration dict."""
+        return self.settings.get("sandbox", {})
+
     def get_project_list(self) -> List[dict]:
         """Get list of registered projects."""
         return self.projects.get("projects", [])

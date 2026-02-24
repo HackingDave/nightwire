@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Static analysis regression test (no shell=True or os.system in codebase)
 - Resource guard: checks memory/CPU before spawning parallel workers
 - `make security` target (bandit + safety), `make typecheck` target (mypy), `make check` target (lint + typecheck + test + security)
+- Optional Docker sandbox for Claude task execution (`sandbox` config)
 
 ### Changed
 - psutil added as dependency for resource monitoring
