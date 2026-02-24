@@ -8,6 +8,11 @@
 
 set -e
 
+# Flush any buffered stdin (prevents stray Enter from skipping prompts)
+flush_stdin() {
+    while read -t 0.1 -n 10000 discard 2>/dev/null; do :; done
+}
+
 # Portable sed -i (BSD/macOS sed requires backup extension arg)
 sed_inplace() {
     if sed --version 2>/dev/null | grep -q GNU; then
@@ -229,6 +234,7 @@ if [ "$INSTALL_MODE" = "docker" ]; then
             echo -e "    Start Docker: ${CYAN}sudo systemctl start docker${NC}"
         fi
         echo ""
+        flush_stdin
         read -p "    Start Docker and press Enter when it's ready (or Ctrl+C to quit)..."
         echo ""
 
@@ -484,6 +490,7 @@ EOF
             echo -e "    Or open in browser: ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=sidechannel${NC}"
             echo ""
 
+            flush_stdin
             read -p "  Press Enter after scanning the QR code..."
 
             echo ""
@@ -605,6 +612,7 @@ elif command -v docker &> /dev/null; then
             SKIP_SIGNAL=true
             DOCKER_OK=true
         else
+            flush_stdin
             read -p "    Press Enter when Docker is running..."
             echo ""
             echo -e "    Waiting for Docker..."
@@ -969,6 +977,7 @@ if [ "$SKIP_SIGNAL" = false ]; then
             fi
 
             echo ""
+            flush_stdin
             read -p "  Press Enter after scanning the QR code..."
 
             echo ""
@@ -989,6 +998,7 @@ if [ "$SKIP_SIGNAL" = false ]; then
                 echo -e "  Check: ${CYAN}http://127.0.0.1:8080/v1/accounts${NC}"
                 echo ""
                 echo "  You may need to wait a moment and try scanning again."
+                flush_stdin
                 read -p "  Retry verification? [Y/n] " -n 1 -r
                 echo ""
                 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
