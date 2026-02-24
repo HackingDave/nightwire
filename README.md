@@ -781,6 +781,13 @@ The autonomous system is designed for tasks too large for a single Claude invoca
 - No message content is logged by default
 - Claude CLI runs with your local user permissions
 
+### Hardening Checklist
+- [ ] Run as dedicated low-privilege user (never root)
+- [ ] Configure firewall (outbound 443 only)
+- [ ] Set `projects_base_path` and `allowed_paths` in config
+- [ ] Enable `plugin_allowlist` if using plugins
+- [ ] Review `SECURITY.md` for full operational security guide
+
 ## Troubleshooting
 
 ### Signal not receiving messages

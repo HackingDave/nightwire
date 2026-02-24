@@ -48,6 +48,40 @@ You should receive a response within 48 hours. We will work with you to understa
 - User data deletion available (`/forget` command)
 - SQLite databases stored locally (not transmitted)
 
+## Operational Security Best Practices
+
+### Run as Dedicated User
+- Create a dedicated low-privilege user (e.g., `sidechannel`) for the bot
+- **Never run as root** — the bot executes Claude CLI which can modify files
+- Restrict the user's home directory permissions: `chmod 700 /home/sidechannel`
+
+### Firewall Rules
+- The bot only needs outbound HTTPS (port 443) for the Anthropic API
+- Signal bridge needs outbound to Signal servers
+- Block all inbound ports except what's needed for your setup
+- Example (ufw):
+  ```bash
+  ufw default deny incoming
+  ufw default allow outgoing
+  ufw allow ssh
+  ufw enable
+  ```
+
+### File System Isolation
+- Set `projects_base_path` to a dedicated directory
+- Use `allowed_paths` to restrict which directories Claude can access
+- Optional: Enable Docker sandbox (`sandbox.enabled: true`) for task execution
+
+### Plugin Security
+- Use `plugin_allowlist` in settings.yaml to restrict which plugins load
+- Review plugin code before adding to the plugins directory
+- Plugins run with the same permissions as the bot process
+
+### Resource Limits
+- The bot checks system resources (memory, CPU) before spawning parallel workers
+- Configure `autonomous.max_parallel` to match your system capacity (default: 3)
+- Consider setting OS-level limits: `ulimit -v 4194304` (4GB virtual memory)
+
 ## Known Limitations
 
 - Claude CLI requires `--dangerously-skip-permissions` for autonomous operation

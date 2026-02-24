@@ -12,10 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_security.py` with tests for the new decorator
 - Plugin loader allowlist (`plugin_allowlist` config option)
 - Security scan in quality gates (detects os.system, shell=True, eval, hardcoded keys, IP exfil)
+- Comprehensive test suite skeleton for security functions (path validation, sanitization, rate limiting)
 - Static analysis regression test (no shell=True or os.system in codebase)
 - Resource guard: checks memory/CPU before spawning parallel workers
 - `make security` target (bandit + safety), `make typecheck` target (mypy), `make check` target (lint + typecheck + test + security)
 - Optional Docker sandbox for Claude task execution (`sandbox` config)
+- Operational security guide in SECURITY.md, hardening checklist in README.md
 
 ### Changed
 - psutil added as dependency for resource monitoring
