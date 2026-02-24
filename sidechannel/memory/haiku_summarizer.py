@@ -119,19 +119,19 @@ If nothing is relevant, say "No relevant past context found."
             "--model", self.model,
             "--print",
             "--max-tokens", str(max_tokens),
-            "-p", prompt
         ]
 
         process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
 
             stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
+                process.communicate(input=prompt.encode("utf-8")),
                 timeout=self.timeout
             )
 

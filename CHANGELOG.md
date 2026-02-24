@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API key sed injection in installer — keys with special characters no longer break setup
 - Incorrect `projects.yaml` format in README (was dict-based, now matches actual list-based format)
 - Stale references to `~/sidechannel` paths and Python 3.10+ in documentation
+- Claude CLI prompt passed via stdin instead of `-p` flag — fixes crash when memory context starts with dashes
 
 ## [1.3.0] - 2026-02-24
 

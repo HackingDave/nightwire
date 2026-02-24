@@ -140,15 +140,14 @@ class ClaudeRunner:
         if timeout is None:
             timeout = self.config.claude_timeout
 
-        # Build the Claude command
+        # Build the Claude command (prompt is passed via stdin to avoid
+        # argument parsing issues when prompt starts with dashes)
         cmd = [
             self.config.claude_path,
             "--print",
             "--dangerously-skip-permissions",
             "--verbose",
             "--max-turns", str(self.config.claude_max_turns),
-            "-p",
-            full_prompt
         ]
 
         logger.info(
@@ -179,6 +178,7 @@ class ClaudeRunner:
 
             result = await self._execute_claude_once(
                 cmd=cmd,
+                prompt=full_prompt,
                 timeout=timeout,
                 progress_callback=progress_callback,
             )
@@ -209,10 +209,14 @@ class ClaudeRunner:
     async def _execute_claude_once(
         self,
         cmd: List[str],
+        prompt: str,
         timeout: int,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> Tuple[bool, str, ErrorCategory]:
         """Execute a single Claude CLI invocation.
+
+        The prompt is passed via stdin to avoid argument parsing issues
+        when prompt content starts with dashes.
 
         Returns:
             Tuple of (success, output_or_error, error_category)
@@ -247,6 +251,7 @@ class ClaudeRunner:
             self._running_process = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(self.current_project),
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=_subprocess_env
@@ -257,7 +262,9 @@ class ClaudeRunner:
 
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    self._running_process.communicate(),
+                    self._running_process.communicate(
+                        input=prompt.encode("utf-8")
+                    ),
                     timeout=timeout
                 )
             except asyncio.TimeoutError:
