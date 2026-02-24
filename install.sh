@@ -514,6 +514,17 @@ CLAUDE_HOME=$HOME/.claude
 EOF
     echo -e "  ${GREEN}✓${NC} Docker Compose configured"
 
+    # Claude CLI auth check
+    if [ -d "$HOME/.claude" ] && [ -n "$(ls -A "$HOME/.claude" 2>/dev/null)" ]; then
+        echo -e "  ${GREEN}✓${NC} Claude CLI auth will be shared with container"
+    else
+        echo ""
+        echo -e "  ${YELLOW}Note:${NC} If you want /ask, /do, /complex commands to work,"
+        echo "  install and authenticate Claude CLI on this machine first:"
+        echo -e "  ${CYAN}curl -fsSL https://claude.ai/install.sh | bash${NC}"
+        echo "  Then re-run this installer."
+    fi
+
     # -------------------------------------------------------------------------
     # Signal Pairing (Docker mode)
     # -------------------------------------------------------------------------
