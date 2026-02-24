@@ -25,6 +25,15 @@ from .prd_builder import clean_json_string, extract_balanced_json, parse_prd_jso
 logger = structlog.get_logger()
 
 
+def _log_task_exception(task: asyncio.Task):
+    """Log exceptions from fire-and-forget tasks instead of silently swallowing them."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.error("background_task_failed", error=str(exc), exc_type=type(exc).__name__)
+
+
 class SignalBot:
     """Signal bot that interfaces with Claude."""
 
@@ -545,7 +554,7 @@ AI Assistant:
                 )
 
                 # Store response to memory
-                asyncio.create_task(
+                t = asyncio.create_task(
                     self.memory.store_message(
                         phone_number=sender,
                         role="assistant",
@@ -554,6 +563,7 @@ AI Assistant:
                         command_type="do"
                     )
                 )
+                t.add_done_callback(_log_task_exception)
 
                 # Send the response
                 await self._send_message(sender, response)
@@ -839,7 +849,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
 
         # Store incoming message (fire and forget, don't block)
         project_name = self.project_manager.current_project
-        asyncio.create_task(
+        t = asyncio.create_task(
             self.memory.store_message(
                 phone_number=sender,
                 role="user",
@@ -848,6 +858,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 command_type=command_type
             )
         )
+        t.add_done_callback(_log_task_exception)
 
         # Check if it's a command
         if message.startswith("/"):
@@ -886,7 +897,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             return
 
         # Store outgoing response (fire and forget)
-        asyncio.create_task(
+        t = asyncio.create_task(
             self.memory.store_message(
                 phone_number=sender,
                 role="assistant",
@@ -895,6 +906,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 command_type=command_type
             )
         )
+        t.add_done_callback(_log_task_exception)
 
         await self._send_message(sender, response)
 

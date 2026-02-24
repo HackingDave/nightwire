@@ -274,7 +274,7 @@ echo ""
 # -----------------------------------------------------------------------------
 echo -e "${BLUE}Checking prerequisites...${NC}"
 
-# Python 3.10+
+# Python 3.9+
 if command -v python3 &> /dev/null; then
     PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
@@ -553,7 +553,15 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         read -p "  > " -s OPENAI_KEY
         echo ""
         if [ -n "$OPENAI_KEY" ]; then
-            sed_inplace "s/^# OPENAI_API_KEY=.*/OPENAI_API_KEY=$OPENAI_KEY/" "$ENV_FILE"
+            # Use python to safely replace the line (avoids sed special char issues in keys)
+            python3 -c "
+import re, sys
+p = sys.argv[1]
+k = sys.argv[2]
+txt = open(p).read()
+txt = re.sub(r'^#?\s*OPENAI_API_KEY=.*', 'OPENAI_API_KEY=' + k, txt, flags=re.MULTILINE)
+open(p, 'w').write(txt)
+" "$ENV_FILE" "$OPENAI_KEY"
             echo -e "  ${GREEN}✓${NC} OpenAI configured"
         fi
     else
@@ -561,7 +569,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         read -p "  > " -s GROK_KEY
         echo ""
         if [ -n "$GROK_KEY" ]; then
-            sed_inplace "s/^# GROK_API_KEY=.*/GROK_API_KEY=$GROK_KEY/" "$ENV_FILE"
+            python3 -c "
+import re, sys
+p = sys.argv[1]
+k = sys.argv[2]
+txt = open(p).read()
+txt = re.sub(r'^#?\s*GROK_API_KEY=.*', 'GROK_API_KEY=' + k, txt, flags=re.MULTILINE)
+open(p, 'w').write(txt)
+" "$ENV_FILE" "$GROK_KEY"
             echo -e "  ${GREEN}✓${NC} Grok configured"
         fi
     fi

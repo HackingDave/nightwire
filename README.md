@@ -114,6 +114,7 @@ These commands let you register, select, and navigate between multiple codebases
 | `/projects` | List all registered projects |
 | `/select <project>` | Set the active project for all code operations |
 | `/add <name> [path] [description]` | Register an existing project directory |
+| `/remove <project>` | Unregister a project from the bot |
 | `/new <name> [description]` | Create a new project from scratch |
 | `/status` | Show current project, running tasks, and autonomous loop state |
 | `/help` | Show all available commands |
@@ -129,6 +130,9 @@ These commands let you register, select, and navigate between multiple codebases
 
 /add backend-api /home/user/projects/api "REST API service"
   → Project 'backend-api' registered
+
+/remove backend-api
+  → Removed project: backend-api
 
 /status
   → Project: myapp
@@ -325,7 +329,7 @@ signal_api_url: "http://127.0.0.1:8080"
 # Claude CLI settings
 claude:
   timeout: 600
-  max_turns: 25
+  max_turns: 15
 
 # Memory System
 memory:
@@ -366,15 +370,17 @@ GROK_API_KEY=xai-...
 
 ### Adding Projects
 
-Edit `config/projects.yaml`:
+During installation, the installer prompts for your projects directory and offers to auto-register all subdirectories. You can also manage projects at runtime with `/add`, `/remove`, and `/select`.
+
+To manually edit `config/projects.yaml`:
 
 ```yaml
 projects:
-  myapp:
+  - name: myapp
     path: /home/user/projects/myapp
     description: "My web application"
 
-  backend:
+  - name: backend
     path: /home/user/projects/backend-api
     description: "REST API service"
 ```
@@ -384,7 +390,7 @@ projects:
 ### Manual Start
 
 ```bash
-cd ~/sidechannel
+cd /path/to/sidechannel
 ./run.sh
 ```
 
@@ -408,7 +414,7 @@ systemctl --user stop sidechannel
 launchctl load ~/Library/LaunchAgents/com.sidechannel.bot.plist
 
 # View logs
-tail -f ~/sidechannel/logs/sidechannel.log
+tail -f /path/to/sidechannel/logs/sidechannel.log
 
 # Stop
 launchctl unload ~/Library/LaunchAgents/com.sidechannel.bot.plist
@@ -754,8 +760,8 @@ The autonomous system is designed for tasks too large for a single Claude invoca
 
 ### Memory not persisting
 
-1. Check data directory exists: `ls ~/sidechannel/data`
-2. Verify SQLite database: `ls ~/sidechannel/data/*.db`
+1. Check data directory exists: `ls /path/to/sidechannel/data`
+2. Verify SQLite database: `ls /path/to/sidechannel/data/*.db`
 
 ## Contributing
 

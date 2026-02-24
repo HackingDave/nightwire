@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Signal bridge restarted in `json-rpc` mode after pairing (was left in `native` mode, breaking WebSocket message receiving)
 - Bot startup now retries Signal API connection (12 attempts over ~90s) instead of failing immediately when signal-api is still starting
+- Fire-and-forget memory tasks now log exceptions instead of silently swallowing them
+- API key sed injection in installer — keys with special characters no longer break setup
+- Incorrect `projects.yaml` format in README (was dict-based, now matches actual list-based format)
+- Stale references to `~/sidechannel` paths and Python 3.10+ in documentation
 
 ## [1.3.0] - 2026-02-24
 
