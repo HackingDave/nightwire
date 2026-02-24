@@ -58,6 +58,23 @@ def check_rate_limit(phone_number: str) -> bool:
     return True
 
 
+# Lock for rate limiter dict operations in async context
+_rate_limit_lock = asyncio.Lock()
+
+
+async def check_rate_limit_async(phone_number: str) -> bool:
+    """Async-safe version of check_rate_limit."""
+    async with _rate_limit_lock:
+        return check_rate_limit(phone_number)
+
+
+def _reset_rate_limits():
+    """Reset rate limit state (for testing)."""
+    global _rate_limit_last_cleanup
+    _rate_limit_data.clear()
+    _rate_limit_last_cleanup = 0.0
+
+
 def normalize_phone_number(phone: str) -> str:
     """Normalize a phone number to E.164 format."""
     if phone.startswith("+"):

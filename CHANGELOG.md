@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Path validation enforced in `ClaudeRunner.set_project()`
 - Verification agent explicitly checks for backdoors, cryptocurrency miners, and data exfiltration
+- Rate limiter dict operations protected by asyncio.Lock
 
 ## [1.5.1] - 2026-02-24
 

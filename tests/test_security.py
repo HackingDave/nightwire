@@ -1,5 +1,6 @@
 """Tests for security module."""
 
+import asyncio
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -54,3 +55,22 @@ def test_claude_runner_set_project_validates_path():
             runner.current_project = None
             with pytest.raises(ValueError, match="validation failed"):
                 runner.set_project(Path("/etc/shadow"))
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_thread_safety():
+    """Rate limiter should be safe under concurrent access."""
+    from sidechannel.security import check_rate_limit_async, _reset_rate_limits
+
+    _reset_rate_limits()
+
+    # Run many concurrent checks — should not raise
+    async def check_many():
+        tasks = [
+            asyncio.create_task(check_rate_limit_async(f"+1555000{i:04d}"))
+            for i in range(50)
+        ]
+        results = await asyncio.gather(*tasks)
+        assert all(r is True for r in results)
+
+    await check_many()
