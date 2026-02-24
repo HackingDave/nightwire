@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Sidechannel assistant errors no longer silently swallowed — returns user-friendly error messages instead of silence
 - Empty sidechannel assistant responses now return a clear message instead of blank reply
+- `allowed_numbers: []` (empty list) now correctly blocks all access instead of granting public access
+- Background tasks use project context captured at creation time, preventing stale lookups if user switches projects mid-task
 
 ## [1.4.0] - 2026-02-24
 

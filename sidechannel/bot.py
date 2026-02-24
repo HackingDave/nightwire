@@ -329,7 +329,8 @@ class SignalBot:
         elif command == "ask":
             if not args:
                 return "Usage: /ask <question about the project>"
-            if not self.project_manager.get_current_project(sender):
+            current_project = self.project_manager.get_current_project(sender)
+            if not current_project:
                 return "No project selected. Use /select <project> first."
             busy = self._check_task_busy()
             if busy:
@@ -339,21 +340,22 @@ class SignalBot:
             self._start_background_task(
                 sender,
                 f"Answer this question about the codebase: {args}",
-                self.project_manager.get_current_project(sender)
+                current_project
             )
             return None  # Response will be sent when task completes
 
         elif command == "do":
             if not args:
                 return "Usage: /do <task to perform>"
-            if not self.project_manager.get_current_project(sender):
+            current_project = self.project_manager.get_current_project(sender)
+            if not current_project:
                 return "No project selected. Use /select <project> first."
             busy = self._check_task_busy()
             if busy:
                 return busy
 
             await self._send_message(sender, "Working on it...")
-            self._start_background_task(sender, args, self.project_manager.get_current_project(sender))
+            self._start_background_task(sender, args, current_project)
             return None  # Response will be sent when task completes
 
         elif command == "complex":
@@ -374,7 +376,8 @@ class SignalBot:
             return await self._cancel_current_task()
 
         elif command == "summary":
-            if not self.project_manager.get_current_project(sender):
+            current_project = self.project_manager.get_current_project(sender)
+            if not current_project:
                 return "No project selected. Use /select <project> first."
             busy = self._check_task_busy()
             if busy:
@@ -386,7 +389,7 @@ class SignalBot:
                 "Provide a comprehensive summary of this project including "
                 "its structure, main technologies used, and any recent changes "
                 "visible in git history.",
-                self.project_manager.get_current_project(sender)
+                current_project
             )
             return None  # Response will be sent when task completes
 
@@ -511,21 +514,25 @@ AI Assistant:
 
         return help_text
 
-    async def _get_memory_context(self, sender: str, query: str) -> Optional[str]:
+    async def _get_memory_context(self, sender: str, query: str,
+                                   project_name: Optional[str] = None) -> Optional[str]:
         """Get memory context for a Claude prompt.
 
         Args:
             sender: User's phone number
             query: The current task/question
+            project_name: Project to scope memory to (uses sender's current if None)
 
         Returns:
             Memory context string to inject, or None
         """
+        if project_name is None:
+            project_name = self.project_manager.get_current_project(sender)
         try:
             context = await self.memory.get_relevant_context(
                 phone_number=sender,
                 query=query,
-                project_name=self.project_manager.get_current_project(sender),
+                project_name=project_name,
                 max_results=5,
                 max_tokens=self.config.memory_max_context_tokens
             )
@@ -550,9 +557,9 @@ AI Assistant:
                     self._current_task_step = msg
                     await self._send_message(sender, msg)
 
-                # Get memory context for this task
+                # Get memory context for this task (use project_name captured at creation)
                 self._current_task_step = "Loading memory context..."
-                memory_context = await self._get_memory_context(sender, task_description)
+                memory_context = await self._get_memory_context(sender, task_description, project_name)
 
                 self._current_task_step = "Claude executing task..."
                 success, response = await self.runner.run_claude(
@@ -888,13 +895,13 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 response = await self._sidechannel_response(message)
             elif response is None:
                 # Treat non-command messages as /do commands if a project is selected
-                if self.project_manager.get_current_project(sender):
+                if project_name:
                     busy = self._check_task_busy()
                     if busy:
                         response = busy
                     else:
                         await self._send_message(sender, "Working on it...")
-                        self._start_background_task(sender, message, self.project_manager.get_current_project(sender))
+                        self._start_background_task(sender, message, project_name)
                         return  # Response will be sent when task completes
                 else:
                     response = "No project selected. Use /projects to list or /select <project> to choose one."

@@ -19,7 +19,7 @@ class AutonomousCommands:
 
         Args:
             manager: AutonomousManager instance
-            get_current_project: Callable that returns (project_name, project_path)
+            get_current_project: Callable(phone_number) -> (project_name, project_path)
         """
         self.manager = manager
         self.get_current_project = get_current_project

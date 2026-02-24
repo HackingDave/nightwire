@@ -24,10 +24,11 @@ class ProjectManager:
     def _can_access(self, project: dict, phone_number: Optional[str] = None) -> bool:
         """Check if a phone number can access a project.
 
-        Projects without allowed_numbers are accessible to everyone.
+        Projects without allowed_numbers (None) are accessible to everyone.
+        Projects with an empty allowed_numbers list ([]) are accessible to nobody.
         """
         allowed = project.get("allowed_numbers")
-        if not allowed:
+        if allowed is None:
             return True
         if phone_number is None:
             return False
