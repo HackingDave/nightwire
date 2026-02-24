@@ -5,6 +5,26 @@ All notable changes to sidechannel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-24
+
+### Changed
+- **Installer rewrite** — local mode Signal setup is now fully automatic (no confusing "protocol bridge" choices)
+- **Installer auto-detects Docker** and installs qrencode automatically for terminal QR codes
+- **Installer starts service automatically** — asks once, installs + starts, no "next steps" homework
+- **Installer summary simplified** — shows "sidechannel is ready!" with one test command instead of multi-step instructions
+- **Docker mode Signal pairing** — cleaner QR code flow with proper verification and retry
+
+### Added
+- **macOS launchd support** — installer creates `com.sidechannel.bot.plist` for auto-start on login
+- **Signal pairing retry** — installer offers a second verification attempt if first scan isn't detected
+- **Auto Docker install** — on Linux (apt/dnf), installer offers to install Docker if missing
+- **Remote session detection** — installer auto-detects SSH sessions and handles Signal bridge exposure/lockdown
+
+### Fixed
+- Raw ANSI escape codes (`\033[0;36m`) no longer appear in installer output
+- Installer no longer offers broken "Native signal-cli" option that can't provide the required REST API
+- Uninstaller now removes macOS launchd plist in addition to Linux systemd service
+
 ## [1.2.0] - 2026-02-24
 
 ### Added

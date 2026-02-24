@@ -88,49 +88,38 @@ cd sidechannel
 ./install.sh
 ```
 
-The installer presents two options:
+The installer walks you through everything: phone number, Signal pairing (scan a QR code), and starting the service. No manual setup needed.
 
 ### Docker Install (recommended)
 
-Everything runs in containers — no Python venv, no systemd.
+Everything runs in containers — one command to start, one to stop.
 
 ```bash
 ./install.sh --docker
 ```
 
-1. Checks Docker, Docker Compose, and Claude CLI are available
-2. Creates directory structure and copies source files
-3. Configures your phone number
-4. Sets up Signal device linking via QR code
-5. Runs `docker compose build && docker compose up -d`
-
 ### Local Install
 
-Traditional Python venv with optional systemd service.
+Python runs natively on your machine with a small Docker container for Signal messaging.
 
 ```bash
 ./install.sh --local
 ```
 
-1. Checks prerequisites (Python 3.10+, Docker, Claude CLI)
-2. Creates a virtual environment and installs dependencies
-3. Sets up Signal CLI REST API with QR code device linking
-4. Configures your phone number
-5. Optionally installs as a systemd service
+Good for development or if you prefer systemd/launchd service management.
 
-If you run `./install.sh` without flags, you'll get an interactive menu to choose.
+Run `./install.sh` without flags for an interactive menu.
 
 ## Requirements
 
-### Docker Install
-- **Docker** with **Docker Compose**
-- **Signal account** — linked to the bot as a secondary device
+| | Docker Install | Local Install |
+|---|---|---|
+| **Docker** | Required (with Compose) | Required (Signal bridge only) |
+| **Python 3.10+** | Not needed | Required |
+| **Claude CLI** | Recommended | Recommended |
+| **Signal account** | Required | Required |
 
-### Local Install
-- **Python 3.10+**
-- **Docker** — for Signal CLI REST API
-- **Claude CLI** — [Installation guide](https://docs.anthropic.com/en/docs/claude-code)
-- **Signal account** — linked to the bot as a secondary device
+Both modes use Docker for the Signal bridge (signal-cli-rest-api) — the difference is whether the Python bot runs in a container or natively.
 
 ---
 
@@ -440,18 +429,30 @@ cd ~/sidechannel
 ./run.sh
 ```
 
-### Local — Systemd Service
+### Local — Systemd Service (Linux)
 
 ```bash
 # Start
 systemctl --user start sidechannel
 
-# Enable on boot
-systemctl --user enable sidechannel
-loginctl enable-linger $USER
-
 # View logs
 journalctl --user -u sidechannel -f
+
+# Stop
+systemctl --user stop sidechannel
+```
+
+### Local — Launchd Service (macOS)
+
+```bash
+# Start
+launchctl load ~/Library/LaunchAgents/com.sidechannel.bot.plist
+
+# View logs
+tail -f ~/sidechannel/logs/sidechannel.log
+
+# Stop
+launchctl unload ~/Library/LaunchAgents/com.sidechannel.bot.plist
 ```
 
 ---
