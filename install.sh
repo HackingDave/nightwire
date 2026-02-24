@@ -42,21 +42,16 @@ wait_for_qrcode() {
             return 1
         fi
 
-        # Check the QR endpoint — success returns image/png, failure returns JSON error
-        local http_code
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" "$qr_url" 2>/dev/null || echo "000")
+        # Single GET request — check content-type from the response itself
+        # Success: content-type contains "image" (PNG QR code)
+        # Failure: content-type contains "json" (error like "no data to encode")
+        local ctype
+        ctype=$(curl -s -o /dev/null -w "%{content_type}" "$qr_url" 2>/dev/null || true)
 
-        if [ "$http_code" = "200" ]; then
-            # 200 could be success (PNG) or error (JSON) — check content type
-            local content_type
-            content_type=$(curl -sI "$qr_url" 2>/dev/null | grep -i "^content-type" || true)
-
-            if echo "$content_type" | grep -qi "image"; then
-                QR_READY=true
-                echo ""
-                return 0
-            fi
-            # JSON error response (like "no data to encode") — keep waiting
+        if echo "$ctype" | grep -qi "image"; then
+            QR_READY=true
+            echo ""
+            return 0
         fi
 
         sleep 3
