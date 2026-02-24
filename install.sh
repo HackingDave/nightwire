@@ -254,7 +254,7 @@ if [ "$RESTART" = true ]; then
 fi
 
 # Banner
-VERSION="1.4.0"
+VERSION="1.5.0"
 echo -e "${CYAN}"
 cat << 'EOF'
      _     _           _                            _

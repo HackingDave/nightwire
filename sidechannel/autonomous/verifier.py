@@ -197,8 +197,9 @@ class VerificationAgent:
         )
 
     async def _get_git_diff(self, project_path: Path) -> str:
-        """Get git diff of uncommitted changes in the project."""
+        """Get git diff of changes in the project (committed or uncommitted)."""
         try:
+            # First try uncommitted changes
             process = await asyncio.create_subprocess_exec(
                 "git", "diff", "HEAD",
                 cwd=str(project_path),
@@ -212,8 +213,10 @@ class VerificationAgent:
             diff = stdout.decode("utf-8", errors="replace")
 
             if not diff:
+                # If no uncommitted changes, check the last commit (executor may
+                # have already committed the changes before verification runs)
                 process = await asyncio.create_subprocess_exec(
-                    "git", "diff",
+                    "git", "diff", "HEAD~1", "HEAD",
                     cwd=str(project_path),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,

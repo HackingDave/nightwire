@@ -12,12 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-phone-number project scoping — each user has their own active project selection
 - Optional `allowed_numbers` field in `projects.yaml` to restrict project access to specific phone numbers
 - `/help` now shows AI Assistant section with `/sidechannel` command when assistant is enabled
+- Runtime dependencies declared in `pyproject.toml` for proper `pip install` support
+- Installer flags documented in README (`--skip-signal`, `--skip-systemd`, `--restart`, `--uninstall`)
+- `SIGNAL_API_URL` environment variable documented in README
 
 ### Fixed
+- **Race condition**: `ClaudeRunner` shared project state could cause tasks to run in wrong project directory when multiple users active — now passes `project_path` directly to `run_claude()`
+- **PRD completion broken**: `failed_stories` count was never populated from database, preventing PRDs from completing when stories failed
+- **`failed_tasks` missing from `list_stories`**: PRD completion summary always reported 0 failed tasks
+- **Memory timezone mismatch**: `datetime.now()` (local time) was compared against SQLite `CURRENT_TIMESTAMP` (UTC), breaking `/forget today` and session detection in non-UTC timezones
+- **Process leak after timeout**: `_running_process` not cleared to `None` after Claude CLI timeout, causing stale reference on subsequent cancel
+- **Verifier blind after commit**: `_get_git_diff` returned empty when executor had already committed changes — now falls back to `HEAD~1..HEAD`
+- **Division by zero**: `_get_relevant_learnings_sync` crashed on empty query strings
+- **Config crash on invalid types**: `int()` conversion for `max_parallel` and `max_tokens` settings now handles non-numeric values gracefully
+- **Inconsistent case sensitivity**: `get_project_path` now uses case-insensitive matching like `remove_project` and `select_project`
+- Unauthorized message logging now masks phone numbers (was logging full number)
+- `pyproject.toml` build-backend fixed from internal API to standard `setuptools.build_meta`
+- Python version requirement aligned across installer (3.9+), pyproject.toml, and tooling
+- Version numbers aligned to 1.5.0 across `__init__.py`, `main.py`, `install.sh`, and `pyproject.toml`
+- Plugin error messages no longer expose internal exception details to users (BluOS music, daily verse)
+- BluOS volume XML parsing handles non-numeric values instead of crashing
+- `initialize_database` now closes previous connection before replacing global instance
+- `similarity_score` model constraint relaxed from `[0, 1]` to `[-1, 1]` to match cosine similarity range
+- Hardcoded `/home/hackingdave/.local/bin/claude` path removed from `haiku_summarizer` — uses auto-detection
+- Deprecated `asyncio.get_event_loop()` replaced with `asyncio.get_running_loop()`
 - Sidechannel assistant errors no longer silently swallowed — returns user-friendly error messages instead of silence
 - Empty sidechannel assistant responses now return a clear message instead of blank reply
 - `allowed_numbers: []` (empty list) now correctly blocks all access instead of granting public access
 - Background tasks use project context captured at creation time, preventing stale lookups if user switches projects mid-task
+
+### Changed
+- Rate limit config example clarified — currently hardcoded, configurable rate limiting planned for future release
+- SECURITY.md version table updated
+- CONTRIBUTING.md fork URL uses `YOUR_USERNAME` placeholder instead of upstream URL
+- README config section expanded with undocumented options (project paths, effort levels, embedding model)
+- `/forget` command description corrected in README to show actual scopes (`all|preferences|today`)
 
 ## [1.4.0] - 2026-02-24
 

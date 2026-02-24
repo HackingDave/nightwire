@@ -121,7 +121,8 @@ class AutonomousDatabase:
             """
             SELECT p.*,
                    COUNT(s.id) as total_stories,
-                   SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) as completed_stories
+                   SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) as completed_stories,
+                   SUM(CASE WHEN s.status = 'failed' THEN 1 ELSE 0 END) as failed_stories
             FROM prds p
             LEFT JOIN stories s ON s.prd_id = p.id
             WHERE p.id = ?
@@ -147,6 +148,7 @@ class AutonomousDatabase:
             metadata=json.loads(row["metadata"]) if row["metadata"] else None,
             total_stories=row["total_stories"] or 0,
             completed_stories=row["completed_stories"] or 0,
+            failed_stories=row["failed_stories"] or 0,
         )
 
     async def list_prds(
@@ -171,7 +173,8 @@ class AutonomousDatabase:
         query = """
             SELECT p.*,
                    COUNT(s.id) as total_stories,
-                   SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) as completed_stories
+                   SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) as completed_stories,
+                   SUM(CASE WHEN s.status = 'failed' THEN 1 ELSE 0 END) as failed_stories
             FROM prds p
             LEFT JOIN stories s ON s.prd_id = p.id
             WHERE p.phone_number = ?
@@ -205,6 +208,7 @@ class AutonomousDatabase:
                 metadata=json.loads(row["metadata"]) if row["metadata"] else None,
                 total_stories=row["total_stories"] or 0,
                 completed_stories=row["completed_stories"] or 0,
+                failed_stories=row["failed_stories"] or 0,
             )
             for row in rows
         ]
@@ -380,7 +384,8 @@ class AutonomousDatabase:
         query = """
             SELECT s.*,
                    COUNT(t.id) as total_tasks,
-                   SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks
+                   SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+                   SUM(CASE WHEN t.status = 'failed' THEN 1 ELSE 0 END) as failed_tasks
             FROM stories s
             LEFT JOIN tasks t ON t.story_id = s.id
             WHERE 1=1
@@ -426,6 +431,7 @@ class AutonomousDatabase:
                 metadata=json.loads(row["metadata"]) if row["metadata"] else None,
                 total_tasks=row["total_tasks"] or 0,
                 completed_tasks=row["completed_tasks"] or 0,
+                failed_tasks=row["failed_tasks"] or 0,
             )
             for row in rows
         ]
@@ -1013,6 +1019,8 @@ class AutonomousDatabase:
 
         # Score each learning based on keyword overlap
         query_words = set(query.lower().split())
+        if not query_words:
+            return []
         scored_learnings = []
 
         for row in rows:

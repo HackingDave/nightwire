@@ -90,6 +90,15 @@ cd sidechannel
 
 The installer walks you through everything: Python venv setup, phone number, Signal pairing (scan a QR code), and starting the service. No manual setup needed.
 
+The installer supports flags for advanced usage:
+
+```bash
+./install.sh --skip-signal    # Skip Signal pairing setup
+./install.sh --skip-systemd   # Skip service installation
+./install.sh --restart        # Restart the sidechannel service
+./install.sh --uninstall      # Remove sidechannel service and containers
+```
+
 ## Requirements
 
 | Dependency | Notes |
@@ -253,7 +262,7 @@ The memory system gives sidechannel persistent context across sessions. Conversa
 | `/recall <query>` | Semantically search past conversations and memories |
 | `/memories` | List all stored memories for the current project |
 | `/history [count]` | View recent message history (default: 10 messages) |
-| `/forget` | Clear your session memory |
+| `/forget all\|preferences\|today` | Delete your data by scope (all data, preferences only, or today's conversations) |
 | `/preferences` | View your stored preferences |
 | `/global remember <text>` | Store a cross-project memory |
 | `/global recall <query>` | Search across all projects |
@@ -329,14 +338,20 @@ allowed_numbers:
 signal_api_url: "http://127.0.0.1:8080"
 
 # Claude CLI settings
-claude_timeout: 600         # Max seconds per Claude invocation
+claude_timeout: 600         # Max seconds per Claude invocation (default: 1800)
 claude_max_turns: 15        # Max conversation turns per invocation
 # claude_path: "/usr/local/bin/claude"  # Override Claude CLI path
+
+# Project directories
+# projects_base_path: "/home/user/projects"   # Base path for project auto-discovery
+# allowed_paths:                               # Additional allowed paths outside base
+#   - "/home/user/other-projects"
 
 # Memory System
 memory:
   session_timeout: 30        # Minutes before session expires
   max_context_tokens: 1500   # Max tokens for context window
+  # embedding_model: "all-MiniLM-L6-v2"  # Sentence transformer model for vector search
 
 # Autonomous Tasks
 autonomous:
@@ -345,6 +360,14 @@ autonomous:
   quality_gates: true        # Run tests after each task
   max_parallel: 3            # Concurrent task workers (1-10)
   verification: true         # Independent code review per task
+  # max_retries: 2           # Max retry attempts for failed tasks
+  # effort_levels:           # Override effort per task type
+  #   implementation: "high"
+  #   bug_fix: "high"
+  #   refactor: "medium"
+
+# Rate Limiting
+# Currently hardcoded to 30 requests per 60-second window per user.
 
 # Optional: sidechannel AI assistant (supports OpenAI and Grok)
 sidechannel_assistant:
@@ -368,6 +391,9 @@ claude login
 # Optional (for sidechannel AI assistant) — set one or both
 OPENAI_API_KEY=sk-...
 GROK_API_KEY=xai-...
+
+# Optional: Override Signal API URL (takes precedence over settings.yaml)
+# SIGNAL_API_URL=http://127.0.0.1:8080
 ```
 
 ### Adding Projects

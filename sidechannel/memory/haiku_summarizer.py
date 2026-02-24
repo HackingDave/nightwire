@@ -180,6 +180,6 @@ def get_haiku_summarizer(claude_path: Optional[str] = None) -> HaikuSummarizer:
     global _summarizer
     if _summarizer is None:
         _summarizer = HaikuSummarizer(
-            claude_path=claude_path or "/home/hackingdave/.local/bin/claude"
+            claude_path=claude_path
         )
     return _summarizer

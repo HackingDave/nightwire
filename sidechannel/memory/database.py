@@ -3,8 +3,9 @@
 import asyncio
 import json
 import sqlite3
+import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Any
 
@@ -32,6 +33,7 @@ class DatabaseConnection:
         self.db_path = db_path
         self._conn: Optional[sqlite3.Connection] = None
         self._has_vec: bool = False
+        self._lock = threading.Lock()
 
     async def initialize(self) -> None:
         """Initialize the database with schema."""
@@ -460,7 +462,7 @@ class DatabaseConnection:
         timeout_minutes: int
     ) -> Session:
         cursor = self._conn.cursor()
-        cutoff = datetime.now() - timedelta(minutes=timeout_minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
 
         # Find active session
         cursor.execute("""
@@ -840,8 +842,12 @@ class DatabaseConnection:
         return await asyncio.to_thread(self._delete_today_sync, phone_number)
 
     def _delete_today_sync(self, phone_number: str) -> int:
+        with self._lock:
+            return self._delete_today_sync_inner(phone_number)
+
+    def _delete_today_sync_inner(self, phone_number: str) -> int:
         cursor = self._conn.cursor()
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
         cursor.execute("""
             DELETE FROM conversations
@@ -931,9 +937,9 @@ class DatabaseConnection:
                 id=row["id"],
                 content=row["content"],
                 role=row["role"],
-                timestamp=datetime.fromisoformat(row["timestamp"]) if row["timestamp"] else datetime.now(),
+                timestamp=self._parse_sqlite_timestamp(row["timestamp"]) or datetime.now(timezone.utc),
                 project_name=row["project_name"],
-                similarity_score=1 - row["distance"],  # Convert distance to similarity
+                similarity_score=max(0.0, min(1.0, 1 - row["distance"])),  # Clamp to [0, 1]
                 source_type="conversation"
             )
             for row in rows
@@ -957,6 +963,11 @@ def get_database(db_path: Optional[Path] = None) -> DatabaseConnection:
 async def initialize_database(db_path: Path) -> DatabaseConnection:
     """Initialize and return the database."""
     global _db
+    if _db is not None:
+        try:
+            await _db.close()
+        except Exception:
+            pass
     _db = DatabaseConnection(db_path)
     await _db.initialize()
     return _db

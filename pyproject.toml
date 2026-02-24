@@ -1,16 +1,25 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "sidechannel"
-version = "1.0.0"
+version = "1.5.0"
 description = "A Signal messaging bot with Claude AI integration for intelligent conversations and autonomous development"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 authors = [
     {name = "hackingdave"},
+]
+dependencies = [
+    "aiohttp>=3.8",
+    "anthropic>=0.18",
+    "pydantic>=2.0",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+    "structlog>=23.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [project.urls]
@@ -33,11 +42,11 @@ include = ["sidechannel*"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py39"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]

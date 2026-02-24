@@ -101,6 +101,7 @@ class ClaudeRunner:
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         memory_context: Optional[str] = None,
         max_retries: int = MAX_RETRIES,
+        project_path: Optional[Path] = None,
     ) -> Tuple[bool, str]:
         """
         Run Claude CLI with the given prompt, retrying on transient errors.
@@ -111,15 +112,17 @@ class ClaudeRunner:
             progress_callback: Optional async callback for progress updates
             memory_context: Optional memory context to inject (from MemoryManager)
             max_retries: Max retries for transient failures (default 2)
+            project_path: Explicit project path (avoids shared-state race conditions)
 
         Returns:
             Tuple of (success, output)
         """
-        if self.current_project is None:
+        effective_project = project_path or self.current_project
+        if effective_project is None:
             return False, "No project selected. Use /select <project> first."
 
-        if not self.current_project.exists():
-            return False, f"Project directory does not exist: {self.current_project}"
+        if not effective_project.exists():
+            return False, f"Project directory does not exist: {effective_project}"
 
         # Sanitize the prompt
         prompt = sanitize_input(prompt)
@@ -152,7 +155,7 @@ class ClaudeRunner:
 
         logger.info(
             "claude_run_start",
-            project=str(self.current_project),
+            project=str(effective_project),
             prompt_length=len(prompt),
             timeout=timeout
         )
@@ -181,6 +184,7 @@ class ClaudeRunner:
                 prompt=full_prompt,
                 timeout=timeout,
                 progress_callback=progress_callback,
+                project_path=effective_project,
             )
 
             success, output, error_category = result
@@ -212,6 +216,7 @@ class ClaudeRunner:
         prompt: str,
         timeout: int,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        project_path: Optional[Path] = None,
     ) -> Tuple[bool, str, ErrorCategory]:
         """Execute a single Claude CLI invocation.
 
@@ -222,13 +227,13 @@ class ClaudeRunner:
             Tuple of (success, output_or_error, error_category)
         """
         progress_task = None
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         async def send_progress_updates():
             """Send periodic progress updates while Claude is running."""
             while True:
                 await asyncio.sleep(PROGRESS_UPDATE_INTERVAL)
-                elapsed = int(asyncio.get_event_loop().time() - start_time)
+                elapsed = int(asyncio.get_running_loop().time() - start_time)
                 elapsed_min = elapsed // 60
                 if progress_callback:
                     try:
@@ -248,9 +253,10 @@ class ClaudeRunner:
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
             }
 
+            effective_cwd = project_path or self.current_project
             self._running_process = await asyncio.create_subprocess_exec(
                 *cmd,
-                cwd=str(self.current_project),
+                cwd=str(effective_cwd),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -270,7 +276,8 @@ class ClaudeRunner:
             except asyncio.TimeoutError:
                 self._running_process.kill()
                 await self._running_process.wait()
-                elapsed = int(asyncio.get_event_loop().time() - start_time)
+                self._running_process = None
+                elapsed = int(asyncio.get_running_loop().time() - start_time)
                 elapsed_min = elapsed // 60
                 logger.warning("claude_timeout", timeout=timeout, elapsed=elapsed)
                 return (

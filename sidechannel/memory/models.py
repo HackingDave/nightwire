@@ -77,7 +77,7 @@ class SearchResult(BaseModel):
     role: str
     timestamp: datetime
     project_name: Optional[str] = None
-    similarity_score: float = Field(..., ge=0.0, le=1.0)
+    similarity_score: float = Field(..., ge=-1.0, le=1.0)
     source_type: str = Field(default="conversation", description="'conversation' or 'memory'")
 
 

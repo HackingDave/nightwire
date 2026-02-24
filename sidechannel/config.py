@@ -210,20 +210,17 @@ class Config:
     @property
     def sidechannel_assistant_max_tokens(self) -> int:
         """Return max tokens for sidechannel assistant responses."""
-        sc_config = self.settings.get("sidechannel_assistant", {})
-        val = sc_config.get("max_tokens")
-        if val is not None:
-            return int(val)
-        # Fallback to legacy nova / grok config
-        nova_config = self.settings.get("nova", {})
-        val = nova_config.get("max_tokens")
-        if val is not None:
-            return int(val)
-        grok_config = self.settings.get("grok", {})
-        val = grok_config.get("max_tokens")
-        if val is not None:
-            return int(val)
-        return 1024
+        default = 1024
+        for section in ("sidechannel_assistant", "nova", "grok"):
+            cfg = self.settings.get(section, {})
+            val = cfg.get("max_tokens")
+            if val is not None:
+                try:
+                    return int(val)
+                except (ValueError, TypeError):
+                    logger.warning("config_invalid_max_tokens", section=section, value=val)
+                    return default
+        return default
 
     # Memory configuration
     @property
@@ -274,7 +271,11 @@ class Config:
         """Max parallel task workers (default 3, max 10)."""
         auto_config = self.settings.get("autonomous", {})
         val = auto_config.get("max_parallel", 3)
-        return min(int(val), 10)
+        try:
+            return min(int(val), 10)
+        except (ValueError, TypeError):
+            logger.warning("config_invalid_max_parallel", value=val)
+            return 3
 
     @property
     def autonomous_verification(self) -> bool:
@@ -344,9 +345,9 @@ class Config:
         return False
 
     def get_project_path(self, name: str) -> Optional[Path]:
-        """Get the path for a project by name."""
+        """Get the path for a project by name (case-insensitive)."""
         for p in self.projects.get("projects", []):
-            if p["name"] == name:
+            if p["name"].lower() == name.lower():
                 return Path(p["path"])
         return None
 

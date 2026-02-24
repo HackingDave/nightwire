@@ -5,7 +5,7 @@ Thank you for your interest in contributing to sidechannel!
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/hackingdave/sidechannel.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/sidechannel.git`
 3. Create a branch: `git checkout -b feature/your-feature`
 4. Make your changes
 5. Run tests: `python -m pytest tests/ -v --tb=short`

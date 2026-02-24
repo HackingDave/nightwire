@@ -35,9 +35,8 @@ autonomous:
   #   verification: "low"
 
 # Rate Limiting
-# rate_limit:
-#   window: 60               # Time window in seconds
-#   max_requests: 30         # Max requests per window per user
+# Currently hardcoded to 30 requests per 60-second window per user.
+# Configurable rate limiting is planned for a future release.
 
 # Optional: sidechannel AI assistant (supports OpenAI and Grok)
 sidechannel_assistant:

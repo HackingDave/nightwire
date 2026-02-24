@@ -42,7 +42,7 @@ async def main():
     setup_logging()
     logger = structlog.get_logger()
 
-    logger.info("sidechannel_starting", version="1.0.0")
+    logger.info("sidechannel_starting", version="1.5.0")
 
     # Import here to ensure logging is configured first
     from .config import get_config
@@ -54,7 +54,7 @@ async def main():
     bot = SignalBot()
 
     # Setup graceful shutdown
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     shutdown_event = asyncio.Event()
 
     def handle_shutdown(sig):

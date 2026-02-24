@@ -562,10 +562,13 @@ AI Assistant:
                 memory_context = await self._get_memory_context(sender, task_description, project_name)
 
                 self._current_task_step = "Claude executing task..."
+                # Pass project_path directly to avoid shared-state race condition
+                task_project_path = self.project_manager.get_current_path(sender)
                 success, response = await self.runner.run_claude(
                     task_description,
                     progress_callback=progress_cb,
-                    memory_context=memory_context
+                    memory_context=memory_context,
+                    project_path=task_project_path,
                 )
 
                 # Store response to memory
@@ -746,12 +749,12 @@ CRITICAL JSON FORMATTING:
 Return ONLY valid JSON, no markdown code blocks, no explanation."""
 
         try:
-            # Run Claude to get the breakdown
-            self.runner.set_project(project_path)
+            # Run Claude to get the breakdown (pass project_path directly to avoid race)
             await update_step("Breaking down task...")
             success, response = await self.runner.run_claude(
                 breakdown_prompt,
-                timeout=self.config.claude_timeout  # Use configurable timeout
+                timeout=self.config.claude_timeout,
+                project_path=project_path,
             )
 
             if not success:
@@ -835,7 +838,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         """Process an incoming message."""
         # Check authorization
         if not is_authorized(sender):
-            logger.warning("unauthorized_message", sender=sender)
+            logger.warning("unauthorized_message", sender="..." + sender[-4:])
             return  # Silently ignore unauthorized messages
 
         # Check rate limit
