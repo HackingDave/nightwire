@@ -145,6 +145,22 @@ if [ "$INSTALL_MODE" = "docker" ]; then
         exit 1
     fi
     echo -e "  ${GREEN}✓${NC} Docker Compose"
+
+    # Claude CLI (required for /ask, /do, /complex commands)
+    if command -v claude &> /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Claude CLI"
+    elif [ -f "$HOME/.local/bin/claude" ]; then
+        echo -e "  ${GREEN}✓${NC} Claude CLI ($HOME/.local/bin/claude)"
+    else
+        echo -e "${YELLOW}Warning: Claude CLI not found${NC}"
+        echo -e "  sidechannel requires Claude CLI for code commands (/ask, /do, /complex)."
+        echo -e "  Install: ${CYAN}https://docs.anthropic.com/en/docs/claude-code${NC}"
+        read -p "  Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
     echo ""
 
     # -------------------------------------------------------------------------
@@ -257,22 +273,21 @@ YAML
         cat > "$ENV_FILE" << EOF
 # sidechannel environment variables
 
-# Anthropic API key (required for Claude)
-ANTHROPIC_API_KEY=
+# Optional: OpenAI API key (for sidechannel AI assistant)
+# OPENAI_API_KEY=
 
-# Optional: Grok API key
+# Optional: Grok API key (for sidechannel AI assistant)
 # GROK_API_KEY=
 EOF
     fi
 
+    # Claude CLI auth check
     echo ""
-    echo -e "Enter your Anthropic API key (or press Enter to set later):"
-    read -p "> " -s ANTHROPIC_KEY
-    echo ""
-
-    if [ -n "$ANTHROPIC_KEY" ]; then
-        sed_inplace "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_KEY/" "$ENV_FILE"
-        echo -e "  ${GREEN}✓${NC} API key configured"
+    if command -v claude &> /dev/null || [ -f "$HOME/.local/bin/claude" ]; then
+        echo -e "  ${GREEN}✓${NC} Claude CLI uses its own authentication (via ${CYAN}claude login${NC})"
+        echo -e "    If not already logged in, run: ${CYAN}claude login${NC}"
+    else
+        echo -e "${YELLOW}Note:${NC} After installing Claude CLI, authenticate with: ${CYAN}claude login${NC}"
     fi
 
     echo ""
@@ -453,9 +468,10 @@ if command -v claude &> /dev/null; then
 elif [ -f "$HOME/.local/bin/claude" ]; then
     echo -e "  ${GREEN}✓${NC} Claude CLI ($HOME/.local/bin/claude)"
 else
-    echo -e "${YELLOW}Warning: Claude CLI not found in PATH${NC}"
-    echo -e "Install Claude: https://docs.anthropic.com/en/docs/claude-code"
-    read -p "Continue anyway? [y/N] " -n 1 -r
+    echo -e "${YELLOW}Warning: Claude CLI not found${NC}"
+    echo -e "  sidechannel requires Claude CLI for code commands (/ask, /do, /complex)."
+    echo -e "  Install: ${CYAN}https://docs.anthropic.com/en/docs/claude-code${NC}"
+    read -p "  Continue anyway? [y/N] " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
@@ -590,22 +606,21 @@ if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" << EOF
 # sidechannel environment variables
 
-# Anthropic API key (required for Claude)
-ANTHROPIC_API_KEY=
+# Optional: OpenAI API key (for sidechannel AI assistant)
+# OPENAI_API_KEY=
 
-# Optional: Grok API key
+# Optional: Grok API key (for sidechannel AI assistant)
 # GROK_API_KEY=
 EOF
 fi
 
+# Claude CLI auth check
 echo ""
-echo -e "Enter your Anthropic API key (or press Enter to set later):"
-read -p "> " -s ANTHROPIC_KEY
-echo ""
-
-if [ -n "$ANTHROPIC_KEY" ]; then
-    sed_inplace "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_KEY/" "$ENV_FILE"
-    echo -e "  ${GREEN}✓${NC} API key configured"
+if command -v claude &> /dev/null || [ -f "$HOME/.local/bin/claude" ]; then
+    echo -e "  ${GREEN}✓${NC} Claude CLI uses its own authentication (via ${CYAN}claude login${NC})"
+    echo -e "    If not already logged in, run: ${CYAN}claude login${NC}"
+else
+    echo -e "${YELLOW}Note:${NC} After installing Claude CLI, authenticate with: ${CYAN}claude login${NC}"
 fi
 
 # Ask about Grok
