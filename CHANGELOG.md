@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.0] - 2026-02-24
 
 ### Added
+- **Docker install mode** — `./install.sh --docker` runs everything in containers via Docker Compose
+- **Dockerfile** — containerized sidechannel bot with Python 3.12-slim base
+- **Install mode menu** — interactive Docker/Local selection when no flag is passed
+- **Dependency auto-check** — local install skips `pip install` if packages already present
 - **Plugin framework** — extend sidechannel with custom plugins in `plugins/` directory
 - **Plugin base class** (`SidechannelPlugin`) with commands, message matchers, lifecycle hooks, and help sections
 - **Plugin auto-discovery** — plugins loaded automatically from `plugins/<name>/plugin.py`
@@ -33,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated duplicate task-busy checks into `_check_task_busy()` helper
 - Bot refactored to use `prd_builder` module instead of inline JSON parsing methods
 - Plugin loader uses insertion-order class discovery (Python 3.7+ dict ordering)
+
+### Fixed
+- **macOS sed compatibility** — `sed -i` calls now use `sed_inplace()` helper that detects GNU vs BSD sed
 
 ## [1.1.0] - 2026-02-23
 

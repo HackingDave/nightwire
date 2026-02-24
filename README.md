@@ -88,19 +88,49 @@ cd sidechannel
 ./install.sh
 ```
 
-The installer will:
-1. Check prerequisites (Python 3.10+, Docker, Claude CLI)
-2. Create a virtual environment and install dependencies
-3. Set up Signal CLI REST API with QR code device linking
-4. Configure your phone number and API keys
-5. Optionally install as a systemd service
+The installer presents two options:
+
+### Docker Install (recommended)
+
+Everything runs in containers — no Python venv, no systemd.
+
+```bash
+./install.sh --docker
+```
+
+1. Checks Docker and Docker Compose are available
+2. Creates directory structure and copies source files
+3. Configures your phone number and API keys
+4. Sets up Signal device linking via QR code
+5. Runs `docker compose build && docker compose up -d`
+
+### Local Install
+
+Traditional Python venv with optional systemd service.
+
+```bash
+./install.sh --local
+```
+
+1. Checks prerequisites (Python 3.10+, Docker, Claude CLI)
+2. Creates a virtual environment and installs dependencies
+3. Sets up Signal CLI REST API with QR code device linking
+4. Configures your phone number and API keys
+5. Optionally installs as a systemd service
+
+If you run `./install.sh` without flags, you'll get an interactive menu to choose.
 
 ## Requirements
 
+### Docker Install
+- **Docker** with **Docker Compose**
+- **Signal account** — linked to the bot as a secondary device
+
+### Local Install
 - **Python 3.10+**
-- **Docker** - For Signal CLI REST API
-- **Claude CLI** - [Installation guide](https://docs.anthropic.com/en/docs/claude-code)
-- **Signal account** - Linked to the bot as a secondary device
+- **Docker** — for Signal CLI REST API
+- **Claude CLI** — [Installation guide](https://docs.anthropic.com/en/docs/claude-code)
+- **Signal account** — linked to the bot as a secondary device
 
 ---
 
@@ -377,14 +407,35 @@ projects:
 
 ## Running
 
-### Manual Start
+### Docker
+
+```bash
+cd ~/sidechannel
+
+# Start both containers (signal-api + sidechannel)
+docker compose up -d
+
+# View logs
+docker compose logs -f sidechannel
+
+# Restart after config changes
+docker compose restart
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# Stop everything
+docker compose down
+```
+
+### Local — Manual Start
 
 ```bash
 cd ~/sidechannel
 ./run.sh
 ```
 
-### Systemd Service
+### Local — Systemd Service
 
 ```bash
 # Start

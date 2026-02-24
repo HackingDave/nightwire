@@ -3,10 +3,19 @@
 # sidechannel installer
 # Signal + Claude AI Bot
 #
-# Usage: ./install.sh [--skip-signal] [--skip-systemd]
+# Usage: ./install.sh [--skip-signal] [--skip-systemd] [--docker] [--local]
 #
 
 set -e
+
+# Portable sed -i (BSD/macOS sed requires backup extension arg)
+sed_inplace() {
+    if sed --version 2>/dev/null | grep -q GNU; then
+        sed -i "$@"
+    else
+        sed -i '' "$@"
+    fi
+}
 
 # Colors
 RED='\033[0;31m'
@@ -27,6 +36,7 @@ SIGNAL_DATA_DIR="$INSTALL_DIR/signal-data"
 # Flags
 SKIP_SIGNAL=false
 SKIP_SYSTEMD=false
+INSTALL_MODE=""
 
 # Parse arguments
 for arg in "$@"; do
@@ -39,12 +49,22 @@ for arg in "$@"; do
             SKIP_SYSTEMD=true
             shift
             ;;
+        --docker)
+            INSTALL_MODE="docker"
+            shift
+            ;;
+        --local)
+            INSTALL_MODE="local"
+            shift
+            ;;
         --help|-h)
             echo "Usage: ./install.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --skip-signal    Skip Signal CLI REST API setup"
-            echo "  --skip-systemd   Skip systemd service installation"
+            echo "  --docker         Install using Docker (recommended)"
+            echo "  --local          Install using local Python venv"
+            echo "  --skip-signal    Skip Signal CLI REST API setup (local mode)"
+            echo "  --skip-systemd   Skip systemd service installation (local mode)"
             echo "  --help, -h       Show this help message"
             exit 0
             ;;
@@ -64,6 +84,322 @@ EOF
 echo -e "${NC}"
 echo -e "${GREEN}Signal + Claude AI Bot Installer${NC}"
 echo ""
+
+# -----------------------------------------------------------------------------
+# Install mode selection
+# -----------------------------------------------------------------------------
+if [ -z "$INSTALL_MODE" ]; then
+    echo -e "${BLUE}How would you like to install?${NC}"
+    echo ""
+    echo "  1) Docker (recommended) — everything runs in containers"
+    echo "  2) Local  — Python venv with optional systemd service"
+    echo ""
+    read -p "> " INSTALL_CHOICE
+    case "$INSTALL_CHOICE" in
+        1|docker|Docker)
+            INSTALL_MODE="docker"
+            ;;
+        2|local|Local)
+            INSTALL_MODE="local"
+            ;;
+        *)
+            INSTALL_MODE="docker"
+            echo -e "  Defaulting to Docker install."
+            ;;
+    esac
+    echo ""
+fi
+
+# =============================================================================
+# DOCKER INSTALL MODE
+# =============================================================================
+if [ "$INSTALL_MODE" = "docker" ]; then
+
+    # -------------------------------------------------------------------------
+    # Docker prerequisites
+    # -------------------------------------------------------------------------
+    echo -e "${BLUE}Checking prerequisites...${NC}"
+
+    if ! command -v docker &> /dev/null; then
+        echo -e "${RED}Error: Docker not found${NC}"
+        echo -e "Install Docker: https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} Docker"
+
+    if ! docker info &> /dev/null; then
+        echo -e "${RED}Error: Docker daemon is not running${NC}"
+        echo -e "Start Docker: sudo systemctl start docker"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} Docker daemon running"
+
+    # Check for docker compose (v2 plugin or standalone)
+    if docker compose version &> /dev/null; then
+        COMPOSE_CMD="docker compose"
+    elif command -v docker-compose &> /dev/null; then
+        COMPOSE_CMD="docker-compose"
+    else
+        echo -e "${RED}Error: Docker Compose not found${NC}"
+        echo -e "Install Docker Compose: https://docs.docker.com/compose/install/"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} Docker Compose"
+    echo ""
+
+    # -------------------------------------------------------------------------
+    # Create directory structure
+    # -------------------------------------------------------------------------
+    echo -e "${BLUE}Creating directory structure...${NC}"
+
+    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$DATA_DIR"
+    mkdir -p "$LOGS_DIR"
+    mkdir -p "$SIGNAL_DATA_DIR"
+
+    echo -e "  ${GREEN}✓${NC} Created $INSTALL_DIR"
+
+    # -------------------------------------------------------------------------
+    # Copy source files
+    # -------------------------------------------------------------------------
+    echo -e "${BLUE}Copying source files...${NC}"
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    if [ -d "$SCRIPT_DIR/sidechannel" ]; then
+        cp -r "$SCRIPT_DIR/sidechannel" "$INSTALL_DIR/"
+        echo -e "  ${GREEN}✓${NC} Copied sidechannel package"
+    else
+        echo -e "${RED}Error: sidechannel package not found in $SCRIPT_DIR${NC}"
+        exit 1
+    fi
+
+    # Copy plugins if present
+    if [ -d "$SCRIPT_DIR/plugins" ]; then
+        cp -r "$SCRIPT_DIR/plugins" "$INSTALL_DIR/"
+        echo -e "  ${GREEN}✓${NC} Copied plugins"
+    fi
+
+    cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/"
+
+    # Copy Docker files
+    cp "$SCRIPT_DIR/Dockerfile" "$INSTALL_DIR/"
+    cp "$SCRIPT_DIR/docker-compose.yml" "$INSTALL_DIR/"
+    echo -e "  ${GREEN}✓${NC} Copied Docker files"
+
+    # Copy config templates
+    if [ -d "$SCRIPT_DIR/config" ]; then
+        cp "$SCRIPT_DIR/config/"*.example "$CONFIG_DIR/" 2>/dev/null || true
+        cp "$SCRIPT_DIR/config/CLAUDE.md" "$CONFIG_DIR/" 2>/dev/null || true
+        echo -e "  ${GREEN}✓${NC} Copied config templates"
+    fi
+
+    # -------------------------------------------------------------------------
+    # Interactive configuration (same prompts, with fixed sed)
+    # -------------------------------------------------------------------------
+    echo ""
+    echo -e "${BLUE}Configuration${NC}"
+    echo ""
+
+    SETTINGS_FILE="$CONFIG_DIR/settings.yaml"
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        if [ -f "$CONFIG_DIR/settings.yaml.example" ]; then
+            cp "$CONFIG_DIR/settings.yaml.example" "$SETTINGS_FILE"
+        else
+            cat > "$SETTINGS_FILE" << 'YAML'
+# sidechannel configuration
+
+# Phone numbers authorized to use the bot (E.164 format)
+allowed_numbers:
+  - "+1XXXXXXXXXX"  # Replace with your number
+
+# Signal CLI REST API (container name resolves via Docker network)
+signal_api_url: "http://signal-api:8080"
+
+# Memory System
+memory:
+  session_timeout: 30
+  max_context_tokens: 1500
+
+# Autonomous Tasks
+autonomous:
+  enabled: true
+  poll_interval: 30
+  quality_gates: true
+
+# Optional: sidechannel AI assistant (OpenAI or Grok)
+sidechannel_assistant:
+  enabled: false
+YAML
+        fi
+    fi
+
+    echo -e "Enter your phone number in E.164 format (e.g., +15551234567):"
+    read -p "> " PHONE_NUMBER
+
+    if [ -n "$PHONE_NUMBER" ]; then
+        if [[ ! "$PHONE_NUMBER" =~ ^\+[1-9][0-9]{6,14}$ ]]; then
+            echo -e "${YELLOW}Warning: Phone number doesn't appear to be in E.164 format${NC}"
+            read -p "Continue anyway? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Please re-run the installer with a valid phone number."
+                exit 1
+            fi
+        fi
+        sed_inplace "s/+1XXXXXXXXXX/$PHONE_NUMBER/" "$SETTINGS_FILE"
+        echo -e "  ${GREEN}✓${NC} Phone number configured"
+    fi
+
+    ENV_FILE="$CONFIG_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        cat > "$ENV_FILE" << EOF
+# sidechannel environment variables
+
+# Anthropic API key (required for Claude)
+ANTHROPIC_API_KEY=
+
+# Optional: Grok API key
+# GROK_API_KEY=
+EOF
+    fi
+
+    echo ""
+    echo -e "Enter your Anthropic API key (or press Enter to set later):"
+    read -p "> " -s ANTHROPIC_KEY
+    echo ""
+
+    if [ -n "$ANTHROPIC_KEY" ]; then
+        sed_inplace "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_KEY/" "$ENV_FILE"
+        echo -e "  ${GREEN}✓${NC} API key configured"
+    fi
+
+    echo ""
+    read -p "Enable sidechannel AI assistant (OpenAI or Grok)? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sed_inplace "s/enabled: false/enabled: true/" "$SETTINGS_FILE"
+        echo -e "Enter your Grok API key:"
+        read -p "> " -s GROK_KEY
+        echo ""
+        if [ -n "$GROK_KEY" ]; then
+            sed_inplace "s/^# GROK_API_KEY=.*/GROK_API_KEY=$GROK_KEY/" "$ENV_FILE"
+            echo -e "  ${GREEN}✓${NC} Grok enabled and configured"
+        fi
+    fi
+
+    # -------------------------------------------------------------------------
+    # Signal device linking (Docker mode)
+    # -------------------------------------------------------------------------
+    echo ""
+    echo -e "${BLUE}Signal Device Linking${NC}"
+    echo ""
+
+    read -p "Set up Signal device linking now? [Y/n] " -n 1 -r
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        echo -e "${CYAN}Starting Signal container for device linking...${NC}"
+
+        docker stop signal-api 2>/dev/null || true
+        docker rm signal-api 2>/dev/null || true
+
+        docker run -d \
+            --name signal-api \
+            --restart unless-stopped \
+            -p "127.0.0.1:8080:8080" \
+            -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+            -e MODE=native \
+            bbernhard/signal-cli-rest-api:0.80
+
+        echo "Waiting for container to start..."
+        sleep 5
+
+        if ! docker ps | grep -q signal-api; then
+            echo -e "${RED}Error: Signal container failed to start${NC}"
+            docker logs signal-api 2>&1 | tail -10
+            exit 1
+        fi
+
+        echo ""
+        echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${GREEN}║                   SIGNAL DEVICE LINKING                        ║${NC}"
+        echo -e "${GREEN}╠════════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${GREEN}║                                                                ║${NC}"
+        echo -e "${GREEN}║  1. Open Signal on your phone                                  ║${NC}"
+        echo -e "${GREEN}║  2. Go to Settings > Linked Devices                            ║${NC}"
+        echo -e "${GREEN}║  3. Tap 'Link New Device'                                      ║${NC}"
+        echo -e "${GREEN}║  4. Scan the QR code at the URL below                          ║${NC}"
+        echo -e "${GREEN}║                                                                ║${NC}"
+        echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo "  QR code: http://127.0.0.1:8080/v1/qrcodelink?device_name=sidechannel"
+        echo ""
+
+        LINK_URI=$(curl -s "http://127.0.0.1:8080/v1/qrcodelink?device_name=sidechannel" | grep -o 'sgnl://[^"]*' 2>/dev/null || true)
+
+        if command -v qrencode &> /dev/null && [ -n "$LINK_URI" ]; then
+            echo -e "${GREEN}Terminal QR Code:${NC}"
+            echo ""
+            echo "$LINK_URI" | qrencode -t ANSIUTF8
+            echo ""
+        fi
+
+        read -p "Press Enter after you've scanned the QR code and linked the device..."
+
+        echo ""
+        echo -e "${CYAN}Verifying device link...${NC}"
+        sleep 2
+
+        # Stop the linking container — docker compose will manage it
+        docker stop signal-api 2>/dev/null || true
+        docker rm signal-api 2>/dev/null || true
+        echo -e "  ${GREEN}✓${NC} Signal device linked"
+    fi
+
+    # -------------------------------------------------------------------------
+    # Build and start containers
+    # -------------------------------------------------------------------------
+    echo ""
+    echo -e "${BLUE}Building and starting containers...${NC}"
+
+    cd "$INSTALL_DIR"
+    $COMPOSE_CMD build
+    $COMPOSE_CMD up -d
+
+    echo ""
+    echo -e "  ${GREEN}✓${NC} Containers started"
+    echo ""
+
+    # -------------------------------------------------------------------------
+    # Docker summary
+    # -------------------------------------------------------------------------
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║              sidechannel installation complete!                ║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "Installation directory: ${CYAN}$INSTALL_DIR${NC}"
+    echo ""
+    echo -e "${YELLOW}Useful commands:${NC}"
+    echo ""
+    echo "  View logs:          $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.yml logs -f sidechannel"
+    echo "  Stop:               $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.yml down"
+    echo "  Restart:            $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.yml restart"
+    echo "  Rebuild after edit: $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.yml up -d --build"
+    echo ""
+    echo -e "Configuration: ${CYAN}$CONFIG_DIR/settings.yaml${NC}"
+    echo -e "Environment:   ${CYAN}$CONFIG_DIR/.env${NC}"
+    echo ""
+    echo -e "${CYAN}Documentation: https://github.com/hackingdave/sidechannel${NC}"
+    echo ""
+
+    exit 0
+fi
+
+# =============================================================================
+# LOCAL INSTALL MODE
+# =============================================================================
 
 # -----------------------------------------------------------------------------
 # Prerequisite checks
@@ -172,14 +508,20 @@ cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/"
 # -----------------------------------------------------------------------------
 echo -e "${BLUE}Setting up Python virtual environment...${NC}"
 
-python3 -m venv "$VENV_DIR"
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+    echo -e "  ${GREEN}✓${NC} Virtual environment created"
+fi
+
 source "$VENV_DIR/bin/activate"
 
-pip install --upgrade pip -q
-pip install -r "$INSTALL_DIR/requirements.txt" -q
-
-echo -e "  ${GREEN}✓${NC} Virtual environment created"
-echo -e "  ${GREEN}✓${NC} Dependencies installed"
+if "$VENV_DIR/bin/pip" freeze 2>/dev/null | grep -q aiohttp; then
+    echo -e "  ${GREEN}✓${NC} Dependencies already installed"
+else
+    pip install --upgrade pip -q
+    pip install -r "$INSTALL_DIR/requirements.txt" -q
+    echo -e "  ${GREEN}✓${NC} Dependencies installed"
+fi
 
 # -----------------------------------------------------------------------------
 # Interactive configuration
@@ -238,7 +580,7 @@ if [ -n "$PHONE_NUMBER" ]; then
         fi
     fi
     # Update settings.yaml with phone number
-    sed -i "s/+1XXXXXXXXXX/$PHONE_NUMBER/" "$SETTINGS_FILE"
+    sed_inplace "s/+1XXXXXXXXXX/$PHONE_NUMBER/" "$SETTINGS_FILE"
     echo -e "  ${GREEN}✓${NC} Phone number configured"
 fi
 
@@ -262,7 +604,7 @@ read -p "> " -s ANTHROPIC_KEY
 echo ""
 
 if [ -n "$ANTHROPIC_KEY" ]; then
-    sed -i "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_KEY/" "$ENV_FILE"
+    sed_inplace "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$ANTHROPIC_KEY/" "$ENV_FILE"
     echo -e "  ${GREEN}✓${NC} API key configured"
 fi
 
@@ -271,12 +613,12 @@ echo ""
 read -p "Enable sidechannel AI assistant (OpenAI or Grok)? [y/N] " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    sed -i "s/enabled: false/enabled: true/" "$SETTINGS_FILE"
+    sed_inplace "s/enabled: false/enabled: true/" "$SETTINGS_FILE"
     echo -e "Enter your Grok API key:"
     read -p "> " -s GROK_KEY
     echo ""
     if [ -n "$GROK_KEY" ]; then
-        sed -i "s/^# GROK_API_KEY=.*/GROK_API_KEY=$GROK_KEY/" "$ENV_FILE"
+        sed_inplace "s/^# GROK_API_KEY=.*/GROK_API_KEY=$GROK_KEY/" "$ENV_FILE"
         echo -e "  ${GREEN}✓${NC} Grok enabled and configured"
     fi
 fi
@@ -452,7 +794,7 @@ if [ "$SKIP_SIGNAL" = false ]; then
 
             # Update settings with linked number if different
             if [ "$LINKED_NUMBER" != "$PHONE_NUMBER" ] && [ -n "$LINKED_NUMBER" ]; then
-                sed -i "s/$PHONE_NUMBER/$LINKED_NUMBER/" "$SETTINGS_FILE" 2>/dev/null || true
+                sed_inplace "s/$PHONE_NUMBER/$LINKED_NUMBER/" "$SETTINGS_FILE" 2>/dev/null || true
             fi
         else
             echo -e "${YELLOW}Warning: Could not verify device link${NC}"
