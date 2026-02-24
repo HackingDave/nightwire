@@ -55,6 +55,10 @@ docs/plans/
 # Claude Code config (contains personal info)
 CLAUDE.md
 
+# Private plugins
+plugins/daily_verse/
+plugins/bluos_music/
+
 # Signal data
 signal-data/
 signal-cli-config/
