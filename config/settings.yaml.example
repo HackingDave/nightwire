@@ -1,4 +1,4 @@
-# sidechannel configuration
+# nightwire configuration
 # Copy to settings.yaml and customize
 
 # Phone numbers authorized to use the bot (E.164 format)
@@ -38,8 +38,8 @@ autonomous:
 # Currently hardcoded to 30 requests per 60-second window per user.
 # Configurable rate limiting is planned for a future release.
 
-# Optional: sidechannel AI assistant (supports OpenAI and Grok)
-sidechannel_assistant:
+# Optional: nightwire AI assistant (supports OpenAI and Grok)
+nightwire_assistant:
   enabled: false
   # provider: "openai"       # or "grok" — auto-detected from API keys if omitted
   # model: "gpt-4o"          # Default: gpt-4o (OpenAI) or grok-3-latest (Grok)
@@ -52,7 +52,7 @@ sidechannel_assistant:
 # allowed_paths:
 #   - "/home/user/projects"
 
-# Plugins — extend sidechannel with custom functionality
+# Plugins — extend nightwire with custom functionality
 # Each plugin has its own config section under plugins.<name>
 # plugins:
 #   daily_verse:
