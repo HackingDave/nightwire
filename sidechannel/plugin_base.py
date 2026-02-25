@@ -29,6 +29,22 @@ class MessageMatcher:
 
 
 @dataclass
+class AttachmentHandler:
+    """A handler for file attachments received via Signal.
+
+    Attributes:
+        priority: Lower numbers are checked first (0-99).
+        match_fn: Sync function (filename: str, content_type: str) -> bool.
+        handle_fn: Async function (sender, file_path, filename, message) -> str.
+        description: Human-readable label for logging.
+    """
+    priority: int
+    match_fn: Callable[[str, str], bool]
+    handle_fn: Callable[[str, Path, str, str], Awaitable[str]]
+    description: str = ""
+
+
+@dataclass
 class HelpSection:
     """A block of help text contributed by a plugin.
 
@@ -51,12 +67,14 @@ class PluginContext:
         self,
         plugin_name: str,
         send_message: Callable[[str, str], Awaitable[None]],
+        send_file: Callable[[str, Path, str], Awaitable[None]],
         settings: dict,
         allowed_numbers: List[str],
         data_dir: Path,
     ):
         self.plugin_name = plugin_name
         self._send_message = send_message
+        self._send_file = send_file
         # Only expose the plugin's own config section, not full settings
         self._plugin_settings = settings.get("plugins", {}).get(plugin_name, {})
         self.allowed_numbers = list(allowed_numbers)  # Read-only copy
@@ -80,6 +98,10 @@ class PluginContext:
         """Send a Signal message to a recipient."""
         await self._send_message(recipient, message)
 
+    async def send_file(self, recipient: str, file_path: Path, message: str = "") -> None:
+        """Send a file via Signal as a base64 attachment."""
+        await self._send_file(recipient, file_path, message)
+
 
 class SidechannelPlugin:
     """Base class for all sidechannel plugins.
@@ -101,6 +123,14 @@ class SidechannelPlugin:
         Handler signature: async (sender: str, args: str) -> str
         """
         return {}
+
+    def attachment_handlers(self) -> List[AttachmentHandler]:
+        """Return attachment handlers for file-based interception.
+
+        Lower priority numbers are checked first. The first handler whose
+        match_fn returns True will handle the attachment.
+        """
+        return []
 
     def message_matchers(self) -> List[MessageMatcher]:
         """Return message matchers for priority-based interception.

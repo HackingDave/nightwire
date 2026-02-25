@@ -1,8 +1,10 @@
 """Signal bot implementation for sidechannel."""
 
 import asyncio
+import base64
 import hashlib
 import json
+import mimetypes
 import time as _time
 from collections import OrderedDict
 from datetime import datetime
@@ -13,6 +15,7 @@ from urllib.parse import urlparse
 import aiohttp
 import structlog
 
+from .attachments import process_attachments
 from .config import get_config
 from .security import is_authorized, sanitize_input, check_rate_limit
 from .claude_runner import get_runner
@@ -80,6 +83,10 @@ class SignalBot:
         )
         self.memory_commands = MemoryCommands(self.memory)
 
+        # Attachments directory
+        self.attachments_dir = Path(self.config.config_dir).parent / "data" / "attachments"
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)
+
         # Autonomous system (initialized after memory in start())
         self.autonomous_manager: Optional[AutonomousManager] = None
         self.autonomous_commands: Optional[AutonomousCommands] = None
@@ -94,6 +101,7 @@ class SignalBot:
             plugins_dir=self.config.plugins_dir,
             settings=self.config.settings,
             send_message=self._send_message,
+            send_file=self._send_file,
             allowed_numbers=self.config.allowed_numbers,
             data_dir=plugins_data_dir,
         )
@@ -251,6 +259,41 @@ class SignalBot:
 
         except Exception as e:
             logger.error("send_error", error=str(e))
+
+    async def _send_file(self, recipient: str, file_path: Path, message: str = "") -> None:
+        """Send a file via Signal as a base64-encoded attachment."""
+        if not self.account:
+            logger.error("no_account_for_sending")
+            return
+
+        if not is_authorized(recipient):
+            logger.warning("blocked_send_to_unauthorized", recipient="..." + recipient[-4:])
+            return
+
+        try:
+            data = file_path.read_bytes()
+            b64 = base64.b64encode(data).decode("ascii")
+            content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+
+            url = f"{self.config.signal_api_url}/v2/send"
+            payload = {
+                "number": self.account,
+                "recipients": [recipient],
+                "message": f"[sidechannel] {message}" if message else "",
+                "base64_attachments": [
+                    f"data:{content_type};filename={file_path.name};base64,{b64}"
+                ],
+            }
+
+            async with self.session.post(url, json=payload) as resp:
+                if resp.status == 201:
+                    logger.info("file_sent", recipient="..." + recipient[-4:], file=file_path.name)
+                else:
+                    text = await resp.text()
+                    logger.error("send_file_failed", status=resp.status, response=text)
+
+        except Exception as e:
+            logger.error("send_file_error", error=str(e), file=str(file_path))
 
     async def _handle_command(self, command: str, args: str, sender: str) -> str:
         """Handle a bot command."""
@@ -1031,11 +1074,13 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             envelope = msg.get("envelope", {})
             source = envelope.get("source") or envelope.get("sourceNumber")
             message_text = None
+            attachments_list = []
 
             # Check for regular data message (from others TO us)
             data_message = envelope.get("dataMessage")
             if data_message:
                 message_text = data_message.get("message", "")
+                attachments_list = data_message.get("attachments") or []
 
             # Check for sync message (our own messages sent from another device)
             sync_message = envelope.get("syncMessage")
@@ -1052,19 +1097,97 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     # Only process if sent to ourselves (the bot's number)
                     if destination and destination == self.account:
                         message_text = sent_message.get("message", "")
+                        attachments_list = sent_message.get("attachments") or []
                         source = self.account
 
             # Ignore receipts, typing indicators, and other message types
-            if not message_text or not message_text.strip():
+            # Allow messages with attachments even if text is empty
+            has_text = message_text and message_text.strip()
+            if not has_text and not attachments_list:
                 return
 
-            # SECURITY: Only process messages from authorized sources
             if not source:
                 return
 
-            # Deduplication: Signal sends both dataMessage and syncMessage for self-messages
+            # Deduplication: Signal sends both dataMessage and syncMessage for self-messages.
+            # Check early (before attachment download) to avoid duplicate processing.
             timestamp = envelope.get("timestamp", 0)
-            msg_hash = hashlib.sha256(f"{timestamp}:{message_text.strip()}".encode()).hexdigest()
+            dedup_key = hashlib.sha256(
+                f"{timestamp}:{source}:{bool(attachments_list)}".encode()
+            ).hexdigest()
+            if dedup_key in self._processed_messages:
+                logger.debug("duplicate_message_skipped", timestamp=timestamp)
+                return
+            self._processed_messages[dedup_key] = _time.time()
+
+            # Evict entries older than 60 seconds
+            cutoff = _time.time() - 60
+            while self._processed_messages:
+                oldest_key, oldest_time = next(iter(self._processed_messages.items()))
+                if oldest_time < cutoff:
+                    self._processed_messages.pop(oldest_key)
+                else:
+                    break
+
+            # SECURITY: Only process messages from authorized sources
+            if not is_authorized(source):
+                logger.warning("unauthorized_message", sender="..." + source[-4:])
+                return
+
+            # Process file attachments
+            saved_files = []
+            if attachments_list and self.session:
+                saved_files = await process_attachments(
+                    attachments=attachments_list,
+                    sender=source,
+                    session=self.session,
+                    signal_api_url=self.config.signal_api_url,
+                    attachments_dir=self.attachments_dir,
+                )
+
+            # Route saved files through plugin attachment handlers.
+            # Files claimed by a plugin handler are removed from the list
+            # so they don't get appended to the message text for Claude.
+            unclaimed_files = []
+            if saved_files:
+                handlers = self.plugin_loader.get_sorted_attachment_handlers()
+                for file_path in saved_files:
+                    claimed = False
+                    for handler in handlers:
+                        try:
+                            filename = file_path.name
+                            content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+                            if handler.match_fn(filename, content_type):
+                                response = await handler.handle_fn(
+                                    source, file_path, filename, (message_text or "").strip(),
+                                )
+                                if response:
+                                    await self._send_message(source, response)
+                                claimed = True
+                                break
+                        except Exception as e:
+                            logger.error(
+                                "plugin_attachment_handler_error",
+                                handler=handler.description,
+                                error=str(e),
+                            )
+                    if not claimed:
+                        unclaimed_files.append(file_path)
+
+            # Build effective message text including file references
+            effective_text = (message_text or "").strip()
+            if unclaimed_files:
+                file_refs = "\n".join(f"- {path}" for path in unclaimed_files)
+                if effective_text:
+                    effective_text = f"{effective_text}\n\nAttached files saved to:\n{file_refs}"
+                else:
+                    effective_text = f"Analyze the following attached files:\n{file_refs}"
+
+            if not effective_text:
+                return
+
+            # Second-level dedup on final message content (catches text variations)
+            msg_hash = hashlib.sha256(f"{timestamp}:{effective_text.strip()}".encode()).hexdigest()
             if msg_hash in self._processed_messages:
                 logger.debug("duplicate_message_skipped", timestamp=timestamp)
                 return
@@ -1079,8 +1202,13 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 else:
                     break
 
-            logger.info("processing_message", source="..." + source[-4:], length=len(message_text))
-            await self._process_message(source, message_text)
+            logger.info(
+                "processing_message",
+                source="..." + source[-4:],
+                length=len(effective_text),
+                attachments=len(saved_files),
+            )
+            await self._process_message(source, effective_text)
 
         except Exception as e:
             logger.error("message_handling_error", error=str(e), msg=str(msg)[:200])

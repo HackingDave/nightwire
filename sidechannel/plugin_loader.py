@@ -10,6 +10,7 @@ from typing import Awaitable, Callable, Dict, List, Optional
 import structlog
 
 from .plugin_base import (
+    AttachmentHandler,
     CommandHandler,
     HelpSection,
     MessageMatcher,
@@ -44,17 +45,20 @@ class PluginLoader:
         plugins_dir: Path,
         settings: dict,
         send_message: Callable[[str, str], Awaitable[None]],
+        send_file: Callable[[str, Path, str], Awaitable[None]],
         allowed_numbers: List[str],
         data_dir: Path,
     ):
         self.plugins_dir = plugins_dir
         self._settings = settings
         self._send_message = send_message
+        self._send_file = send_file
         self._allowed_numbers = allowed_numbers
         self._data_dir = data_dir
         self.plugins: List[SidechannelPlugin] = []
         self._commands: Dict[str, CommandHandler] = {}
         self._matchers: List[MessageMatcher] = []
+        self._attachment_handlers: List[AttachmentHandler] = []
         self._help: List[HelpSection] = []
 
     def discover_and_load(self) -> None:
@@ -117,7 +121,28 @@ class PluginLoader:
             logger.info("plugin_skipped_disabled", plugin=plugin_name)
             return
 
-        # Import the module
+        # Register the parent package so relative imports work
+        # (e.g. `from .hayabusa import ...` in plugin.py)
+        plugin_dir = plugin_file.parent
+        if plugin_name not in sys.modules:
+            init_file = plugin_dir / "__init__.py"
+            if init_file.is_file():
+                parent_spec = importlib.util.spec_from_file_location(
+                    plugin_name,
+                    init_file,
+                    submodule_search_locations=[str(plugin_dir)],
+                )
+                parent_mod = importlib.util.module_from_spec(parent_spec)
+                sys.modules[plugin_name] = parent_mod
+                parent_spec.loader.exec_module(parent_mod)
+            else:
+                import types
+                parent_mod = types.ModuleType(plugin_name)
+                parent_mod.__path__ = [str(plugin_dir)]
+                parent_mod.__package__ = plugin_name
+                sys.modules[plugin_name] = parent_mod
+
+        # Import the plugin module
         module_name = f"{plugin_name}.plugin"
         spec = importlib.util.spec_from_file_location(module_name, plugin_file)
         module = importlib.util.module_from_spec(spec)
@@ -139,13 +164,17 @@ class PluginLoader:
             logger.warning("plugin_no_class_found", plugin=plugin_name)
             return
 
-        # Create context and instantiate
+        # Create per-plugin data directory
+        plugin_data_dir = self._data_dir / plugin_name
+        plugin_data_dir.mkdir(parents=True, exist_ok=True)
+
         ctx = PluginContext(
             plugin_name=plugin_name,
             send_message=self._send_message,
+            send_file=self._send_file,
             settings=self._settings,
             allowed_numbers=self._allowed_numbers,
-            data_dir=self._data_dir,
+            data_dir=plugin_data_dir,
         )
 
         plugin = plugin_cls(ctx)
@@ -175,6 +204,9 @@ class PluginLoader:
                 )
             else:
                 self._commands[cmd_name] = handler
+
+        # Collect attachment handlers
+        self._attachment_handlers.extend(plugin.attachment_handlers())
 
         # Collect matchers
         self._matchers.extend(plugin.message_matchers())
@@ -222,6 +254,10 @@ class PluginLoader:
     def get_sorted_matchers(self) -> List[MessageMatcher]:
         """Return all matchers sorted by priority (lower first)."""
         return sorted(self._matchers, key=lambda m: m.priority)
+
+    def get_sorted_attachment_handlers(self) -> List[AttachmentHandler]:
+        """Return all attachment handlers sorted by priority (lower first)."""
+        return sorted(self._attachment_handlers, key=lambda h: h.priority)
 
     def get_all_help(self) -> List[HelpSection]:
         """Return merged help sections from all plugins."""
