@@ -15,7 +15,7 @@ Most AI coding tools require you to sit at your computer. Sidechannel lets you m
 - **Delegate complex projects** - Describe what you want built, and Sidechannel breaks it into a full PRD with stories and tasks, then executes them autonomously with parallel workers
 - **Never lose context** - Episodic memory with vector embeddings means Sidechannel remembers your conversations, project preferences, and past decisions across sessions
 - **Trust the output** - Every autonomous task is independently verified by a separate Claude context using a fail-closed security model. Code that introduces security issues or logic errors is rejected automatically
-- **Powered by Claude** - All code analysis, generation, and autonomous tasks run through Claude (via Claude CLI). Optionally add OpenAI or Grok as lightweight quick-response assistants for general questions that don't need project access
+- **Powered by Claude** - All code analysis, generation, and autonomous tasks run through Claude (via Claude CLI). Optionally add OpenAI, Grok, or Morpheus as lightweight quick-response assistants for general questions that don't need project access
 - **Stay secure** - Phone number allowlist, end-to-end encryption via Signal, rate limiting, path validation hardening, and no message content logging
 
 ### Key Benefits
@@ -301,7 +301,7 @@ The memory system gives Sidechannel persistent context across sessions. Conversa
 
 ### Sidechannel AI Assistant (Optional)
 
-All code commands (`/ask`, `/do`, `/complex`) are powered by **Claude** via Claude CLI. Separately, you can enable a lightweight quick-response assistant backed by OpenAI (GPT-4o) or Grok for general knowledge questions that don't need project file access. This is optional — Claude handles all the real work.
+All code commands (`/ask`, `/do`, `/complex`) are powered by **Claude** via Claude CLI. Separately, you can enable a lightweight quick-response assistant backed by OpenAI (GPT-4o), Grok, or Morpheus (decentralized AI compute) for general knowledge questions that don't need project file access. This is optional — Claude handles all the real work.
 
 | Command | Description |
 |---------|-------------|
@@ -321,7 +321,7 @@ sidechannel what's the best way to handle JWT refresh tokens?
   → Practical advice on token refresh patterns
 ```
 
-The provider is auto-detected from your API keys. If only `OPENAI_API_KEY` is set, it uses OpenAI. If only `GROK_API_KEY` is set, it uses Grok. You can also set it explicitly in config.
+The provider is auto-detected from your API keys. If only `OPENAI_API_KEY` is set, it uses OpenAI. If only `GROK_API_KEY` is set, it uses Grok. If only `MORPHEUS_API_KEY` is set, it uses Morpheus. You can also set it explicitly in config.
 
 ### Auto-Update
 
@@ -382,11 +382,11 @@ autonomous:
 # Rate Limiting
 # Currently hardcoded to 30 requests per 60-second window per user.
 
-# Optional: sidechannel AI assistant (supports OpenAI and Grok)
+# Optional: sidechannel AI assistant (supports OpenAI, Grok, and Morpheus)
 sidechannel_assistant:
   enabled: false
-  # provider: "openai"       # or "grok" — auto-detected from API keys if omitted
-  # model: "gpt-4o"          # Default: gpt-4o (OpenAI) or grok-3-latest (Grok)
+  # provider: "openai"       # or "grok" or "morpheus" — auto-detected from API keys if omitted
+  # model: "gpt-4o"          # Default: gpt-4o (OpenAI), grok-3-latest (Grok), or LMR-Hermes-3-Llama-3.1-70B (Morpheus)
   # max_tokens: 1024
 ```
 
@@ -401,9 +401,10 @@ claude login
 ### Environment Variables (.env)
 
 ```bash
-# Optional (for sidechannel AI assistant) — set one or both
+# Optional (for sidechannel AI assistant) — set one or more
 OPENAI_API_KEY=sk-...
 GROK_API_KEY=xai-...
+MORPHEUS_API_KEY=sk-...
 
 # Optional: Override Signal API URL (takes precedence over settings.yaml)
 # SIGNAL_API_URL=http://127.0.0.1:8080

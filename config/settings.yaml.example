@@ -38,11 +38,11 @@ autonomous:
 # Currently hardcoded to 30 requests per 60-second window per user.
 # Configurable rate limiting is planned for a future release.
 
-# Optional: sidechannel AI assistant (supports OpenAI and Grok)
+# Optional: sidechannel AI assistant (supports OpenAI, Grok, and Morpheus)
 sidechannel_assistant:
   enabled: false
-  # provider: "openai"       # or "grok" — auto-detected from API keys if omitted
-  # model: "gpt-4o"          # Default: gpt-4o (OpenAI) or grok-3-latest (Grok)
+  # provider: "openai"       # or "grok" or "morpheus" — auto-detected from API keys if omitted
+  # model: "gpt-4o"          # Default: gpt-4o (OpenAI), grok-3-latest (Grok), or LMR-Hermes-3-Llama-3.1-70B (Morpheus)
   # max_tokens: 1024
 
 # Legacy nova / grok config sections are still recognized for backward compatibility

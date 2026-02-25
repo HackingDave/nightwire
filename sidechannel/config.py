@@ -115,7 +115,7 @@ class Config:
             return str(home_local)
         return "claude"  # Hope it's in PATH
 
-    # sidechannel AI assistant configuration (supports OpenAI and Grok providers)
+    # sidechannel AI assistant configuration (supports OpenAI, Grok, and Morpheus providers)
     @property
     def sidechannel_assistant_enabled(self) -> bool:
         """Whether sidechannel AI assistant is enabled."""
@@ -136,14 +136,15 @@ class Config:
 
     @property
     def sidechannel_assistant_provider(self) -> str:
-        """Detect which provider to use: 'openai' or 'grok'.
+        """Detect which provider to use: 'openai', 'grok', or 'morpheus'.
 
         Priority:
         1. Explicit sidechannel_assistant.provider setting
-        2. Auto-detect from env: only OPENAI_API_KEY -> 'openai'
-        3. Auto-detect from env: only GROK_API_KEY -> 'grok'
-        4. Both keys present -> 'grok' (backward compat)
-        5. Neither key -> 'grok' (will fail gracefully at call time)
+        2. Auto-detect from env: only MORPHEUS_API_KEY -> 'morpheus'
+        3. Auto-detect from env: only OPENAI_API_KEY -> 'openai'
+        4. Auto-detect from env: only GROK_API_KEY -> 'grok'
+        5. Multiple keys present -> 'grok' (backward compat)
+        6. No keys -> 'grok' (will fail gracefully at call time)
         """
         sc_config = self.settings.get("sidechannel_assistant", {})
         explicit = sc_config.get("provider")
@@ -157,17 +158,23 @@ class Config:
 
         has_openai = bool(os.environ.get("OPENAI_API_KEY"))
         has_grok = bool(os.environ.get("GROK_API_KEY"))
+        has_morpheus = bool(os.environ.get("MORPHEUS_API_KEY"))
 
-        if has_openai and not has_grok:
+        if has_morpheus and not has_openai and not has_grok:
+            return "morpheus"
+        if has_openai and not has_grok and not has_morpheus:
             return "openai"
-        # grok for: only grok, both, or neither
+        # grok for: only grok, multiple keys, or neither
         return "grok"
 
     @property
     def sidechannel_assistant_api_key(self) -> str:
         """Return the API key for the active provider."""
-        if self.sidechannel_assistant_provider == "openai":
+        provider = self.sidechannel_assistant_provider
+        if provider == "openai":
             return os.environ.get("OPENAI_API_KEY", "")
+        if provider == "morpheus":
+            return os.environ.get("MORPHEUS_API_KEY", "")
         return os.environ.get("GROK_API_KEY", "")
 
     @property
@@ -182,8 +189,11 @@ class Config:
         custom_url = nova_config.get("api_url")
         if custom_url:
             return custom_url
-        if self.sidechannel_assistant_provider == "openai":
+        provider = self.sidechannel_assistant_provider
+        if provider == "openai":
             return "https://api.openai.com/v1/chat/completions"
+        if provider == "morpheus":
+            return "https://api.mor.org/api/v1/chat/completions"
         return "https://api.x.ai/v1/chat/completions"
 
     @property
@@ -203,8 +213,11 @@ class Config:
         if model:
             return model
         # Provider default
-        if self.sidechannel_assistant_provider == "openai":
+        provider = self.sidechannel_assistant_provider
+        if provider == "openai":
             return "gpt-4o"
+        if provider == "morpheus":
+            return "LMR-Hermes-3-Llama-3.1-70B"
         return "grok-3-latest"
 
     @property

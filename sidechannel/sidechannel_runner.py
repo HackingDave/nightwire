@@ -1,4 +1,4 @@
-"""sidechannel AI assistant runner with configurable provider (OpenAI or Grok)."""
+"""sidechannel AI assistant runner with configurable provider (OpenAI, Grok, or Morpheus)."""
 
 import asyncio
 from typing import Optional, Tuple
@@ -11,15 +11,16 @@ logger = structlog.get_logger()
 
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+MORPHEUS_API_URL = "https://api.mor.org/api/v1/chat/completions"
 
-ALLOWED_API_HOSTS = {"api.openai.com", "api.x.ai"}
+ALLOWED_API_HOSTS = {"api.openai.com", "api.x.ai", "api.mor.org"}
 
 
 class SidechannelRunner:
     """Manages API execution for sidechannel AI assistant.
 
-    Supports both OpenAI and Grok (X.AI) as backend providers.
-    Both use the identical /v1/chat/completions schema.
+    Supports OpenAI, Grok (X.AI), and Morpheus (mor.org) as backend providers.
+    All use the OpenAI-compatible /v1/chat/completions schema.
     """
 
     def __init__(
@@ -75,7 +76,7 @@ class SidechannelRunner:
             Tuple of (success, response)
         """
         if not self.api_key:
-            return False, "sidechannel assistant is not configured. Set OPENAI_API_KEY or GROK_API_KEY in your .env file."
+            return False, "sidechannel assistant is not configured. Set OPENAI_API_KEY, GROK_API_KEY, or MORPHEUS_API_KEY in your .env file."
 
         # Clean the message - remove sidechannel prefix variations
         clean_message = message.strip()

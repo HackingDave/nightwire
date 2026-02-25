@@ -20,7 +20,7 @@ sidechannel/
 ├── bot.py              # Main bot: message routing, command dispatch
 ├── claude_runner.py    # Claude CLI subprocess with retry and error classification
 ├── config.py           # YAML/env configuration loader
-├── sidechannel_runner.py  # sidechannel AI assistant (OpenAI / Grok provider)
+├── sidechannel_runner.py  # sidechannel AI assistant (OpenAI / Grok / Morpheus provider)
 ├── security.py         # Auth, rate limiting, path validation, input sanitization
 ├── project_manager.py  # Multi-project management
 ├── plugin_base.py      # Plugin base class and PluginContext API
