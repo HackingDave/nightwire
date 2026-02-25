@@ -870,6 +870,8 @@ WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=-$CONFIG_DIR/.env
 ExecStart=$VENV_DIR/bin/python3 -m nightwire
+StandardOutput=append:$LOGS_DIR/nightwire.log
+StandardError=append:$LOGS_DIR/nightwire.log
 Restart=on-failure
 RestartSec=10
 RestartForceExitStatus=75

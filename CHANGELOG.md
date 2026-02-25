@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signal UUID sender authorization — modern Signal accounts that use UUIDs instead of phone numbers are now correctly authorized (#7)
 - `allowed_numbers` config now accepts both E.164 phone numbers and Signal UUIDs
 - Config validation no longer warns on UUID entries in `allowed_numbers`
+- Systemd service now writes stdout/stderr to `$LOGS_DIR/nightwire.log` on Linux (#6)
 
 ## [2.1.0] - 2026-02-25
 
