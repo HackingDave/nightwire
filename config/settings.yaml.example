@@ -46,6 +46,7 @@ sidechannel_assistant:
   # max_tokens: 1024
   # Morpheus offers 30+ models. Browse available models at https://app.mor.org
   # or query the API: curl https://api.mor.org/api/v1/models -H "Authorization: Bearer $MORPHEUS_API_KEY"
+  # Tip: Most models have a ":web" variant (e.g. "glm-5:web") that can search the internet
 
 # Legacy nova / grok config sections are still recognized for backward compatibility
 
