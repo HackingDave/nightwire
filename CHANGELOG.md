@@ -1,9 +1,21 @@
 # Changelog
 
-All notable changes to sidechannel will be documented in this file.
+All notable changes to nightwire (formerly sidechannel) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.0.0] - 2026-02-25
+
+### Changed
+- **Project renamed from sidechannel to nightwire** — package, commands, config keys, service names, and all documentation updated
+- Console entry point: `sidechannel` → `nightwire`
+- Bot command: `/sidechannel` → `/nightwire`
+- Config key: `sidechannel_assistant` → `nightwire_assistant` (old key still works as fallback)
+- Systemd service: `sidechannel.service` → `nightwire.service`
+- macOS LaunchAgent: `com.sidechannel.bot` → `com.nightwire.bot`
+- Plugin base class: `SidechannelPlugin` → `NightwirePlugin` (old name still works as alias)
+- Bot still accepts both "nightwire:" and "sidechannel:" message triggers during transition
 
 ## [1.6.0] - 2026-02-24
 
