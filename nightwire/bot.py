@@ -1115,7 +1115,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         """Handle a message from Signal API."""
         try:
             envelope = msg.get("envelope", {})
-            source = envelope.get("source") or envelope.get("sourceNumber")
+            source = envelope.get("source") or envelope.get("sourceNumber") or envelope.get("sourceUuid")
             message_text = None
 
             # Check for regular data message (from others TO us)

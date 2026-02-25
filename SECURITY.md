@@ -21,8 +21,8 @@ You should receive a response within 48 hours. We will work with you to understa
 ## Security Design Principles
 
 ### Authentication
-- Only phone numbers listed in `allowed_numbers` can interact with the bot
-- Phone numbers are partially masked in all log output
+- Only phone numbers or Signal UUIDs listed in `allowed_numbers` can interact with the bot
+- Sender identifiers are partially masked in all log output
 - Per-user rate limiting prevents abuse (configurable window and max requests)
 
 ### Secrets Management

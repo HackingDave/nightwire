@@ -75,6 +75,17 @@ def _reset_rate_limits():
     _rate_limit_last_cleanup = 0.0
 
 
+_UUID_PATTERN = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    re.IGNORECASE,
+)
+
+
+def is_uuid(value: str) -> bool:
+    """Check if a string is a Signal UUID."""
+    return bool(_UUID_PATTERN.match(value))
+
+
 def normalize_phone_number(phone: str) -> str:
     """Normalize a phone number to E.164 format."""
     if phone.startswith("+"):
@@ -82,22 +93,27 @@ def normalize_phone_number(phone: str) -> str:
     return "+" + re.sub(r"[^\d]", "", phone)
 
 
-def is_authorized(phone_number: str) -> bool:
-    """Check if a phone number is authorized to use the bot."""
+def is_authorized(sender: str) -> bool:
+    """Check if a sender (phone number or UUID) is authorized to use the bot."""
     config = get_config()
-    normalized = normalize_phone_number(phone_number)
+    allowed = config.allowed_numbers
 
-    allowed = [normalize_phone_number(n) for n in config.allowed_numbers]
+    # Direct match first — handles UUIDs and already-normalized numbers
+    if sender in allowed:
+        return True
 
-    authorized = normalized in allowed
+    # Try phone number normalization for non-UUID senders
+    if not is_uuid(sender):
+        normalized = normalize_phone_number(sender)
+        normalized_allowed = [normalize_phone_number(n) for n in allowed if not is_uuid(n)]
+        if normalized in normalized_allowed:
+            return True
 
-    if not authorized:
-        logger.warning(
-            "unauthorized_access_attempt",
-            phone_number="..." + normalized[-4:],
-        )
-
-    return authorized
+    logger.warning(
+        "unauthorized_access_attempt",
+        sender="..." + sender[-4:],
+    )
+    return False
 
 
 def validate_project_path(path: str) -> Optional[Path]:

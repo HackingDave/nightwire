@@ -54,11 +54,20 @@ class Config:
 
     def validate(self):
         """Validate critical settings at startup. Call from main.py."""
+        import re
+        uuid_pattern = re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            re.IGNORECASE,
+        )
         numbers = self.allowed_numbers
         if not numbers:
             logger.warning("no_allowed_numbers", msg="Bot will reject all messages")
         for n in numbers:
-            if not isinstance(n, str) or not n.startswith("+") or not n[1:].isdigit():
+            if not isinstance(n, str):
+                logger.error("invalid_allowed_entry", entry="..." + str(n)[-4:])
+            elif uuid_pattern.match(n):
+                pass  # Valid Signal UUID
+            elif not n.startswith("+") or not n[1:].isdigit():
                 logger.error("invalid_phone_number_format", number="..." + str(n)[-4:])
 
         # Check autonomous config types

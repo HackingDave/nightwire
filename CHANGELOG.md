@@ -5,6 +5,13 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-02-25
+
+### Fixed
+- Signal UUID sender authorization — modern Signal accounts that use UUIDs instead of phone numbers are now correctly authorized (#7)
+- `allowed_numbers` config now accepts both E.164 phone numbers and Signal UUIDs
+- Config validation no longer warns on UUID entries in `allowed_numbers`
+
 ## [2.1.0] - 2026-02-25
 
 ### Added

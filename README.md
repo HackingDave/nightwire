@@ -381,9 +381,10 @@ When an update is detected, the bot sends a Signal message to the admin (first n
 ### settings.yaml
 
 ```yaml
-# Phone numbers authorized to use the bot (E.164 format)
+# Phone numbers or Signal UUIDs authorized to use the bot
 allowed_numbers:
   - "+15551234567"
+  # - "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # Signal UUID
 
 # Signal CLI REST API
 signal_api_url: "http://127.0.0.1:8080"
@@ -829,7 +830,7 @@ The autonomous system is designed for tasks too large for a single Claude invoca
 
 ## Security Considerations
 
-- Only phone numbers in `allowed_numbers` can interact with the bot
+- Only phone numbers or Signal UUIDs in `allowed_numbers` can interact with the bot
 - **Rate limiting** - Per-user configurable request throttling prevents abuse
 - **Path validation hardening** - Directory traversal protection with strict prefix matching
 - **Phone number masking in logs** - Sensitive identifiers are redacted in all log output

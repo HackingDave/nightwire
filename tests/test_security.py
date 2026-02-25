@@ -150,3 +150,59 @@ def test_normalize_phone_preserves_plus():
 def test_normalize_phone_strips_formatting():
     from nightwire.security import normalize_phone_number
     assert normalize_phone_number("+1 (212) 555-1234") == "+12125551234"
+
+
+# --- is_uuid tests ---
+
+def test_is_uuid_recognizes_valid_uuid():
+    from nightwire.security import is_uuid
+    assert is_uuid("abc12345-def6-7890-abcd-ef1234567890") is True
+
+
+def test_is_uuid_rejects_phone_number():
+    from nightwire.security import is_uuid
+    assert is_uuid("+12125551234") is False
+
+
+def test_is_uuid_rejects_partial_uuid():
+    from nightwire.security import is_uuid
+    assert is_uuid("abc12345-def6-7890") is False
+
+
+# --- is_authorized UUID tests ---
+
+def test_is_authorized_allows_uuid_sender():
+    """UUID sender should be authorized when UUID is in allowed_numbers."""
+    from nightwire.security import is_authorized
+    uuid = "abc12345-def6-7890-abcd-ef1234567890"
+    with patch("nightwire.security.get_config") as mock_config:
+        mock_config.return_value.allowed_numbers = [uuid]
+        assert is_authorized(uuid) is True
+
+
+def test_is_authorized_rejects_unknown_uuid():
+    """UUID sender not in allowed_numbers should be rejected."""
+    from nightwire.security import is_authorized
+    with patch("nightwire.security.get_config") as mock_config:
+        mock_config.return_value.allowed_numbers = ["+12125551234"]
+        assert is_authorized("abc12345-def6-7890-abcd-ef1234567890") is False
+
+
+def test_is_authorized_mixed_uuid_and_phone():
+    """Both UUIDs and phone numbers should work in allowed_numbers."""
+    from nightwire.security import is_authorized
+    uuid = "abc12345-def6-7890-abcd-ef1234567890"
+    phone = "+12125551234"
+    with patch("nightwire.security.get_config") as mock_config:
+        mock_config.return_value.allowed_numbers = [uuid, phone]
+        assert is_authorized(uuid) is True
+        assert is_authorized(phone) is True
+        assert is_authorized("+15559999999") is False
+
+
+def test_is_authorized_phone_normalization_still_works():
+    """Phone number normalization should still work for non-UUID senders."""
+    from nightwire.security import is_authorized
+    with patch("nightwire.security.get_config") as mock_config:
+        mock_config.return_value.allowed_numbers = ["+12125551234"]
+        assert is_authorized("+1 (212) 555-1234") is True

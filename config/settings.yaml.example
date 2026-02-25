@@ -1,10 +1,12 @@
 # nightwire configuration
 # Copy to settings.yaml and customize
 
-# Phone numbers authorized to use the bot (E.164 format)
-# IMPORTANT: Replace with your actual phone number
+# Phone numbers or Signal UUIDs authorized to use the bot
+# Supports E.164 phone numbers and Signal UUIDs (for modern accounts)
+# IMPORTANT: Replace with your actual phone number or UUID
 allowed_numbers:
   - "+1XXXXXXXXXX"
+  # - "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # Signal UUID example
 
 # Signal CLI REST API connection
 signal_api_url: "http://127.0.0.1:8080"
