@@ -1,11 +1,11 @@
-# Contributing to sidechannel
+# Contributing to nightwire
 
-Thank you for your interest in contributing to sidechannel!
+Thank you for your interest in contributing to nightwire!
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/sidechannel.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/nightwire.git`
 3. Create a branch: `git checkout -b feature/your-feature`
 4. Make your changes
 5. Run tests: `python -m pytest tests/ -v --tb=short`
@@ -16,11 +16,11 @@ Thank you for your interest in contributing to sidechannel!
 ## Architecture Overview
 
 ```
-sidechannel/
+nightwire/
 ├── bot.py              # Main bot: message routing, command dispatch
 ├── claude_runner.py    # Claude CLI subprocess with retry and error classification
 ├── config.py           # YAML/env configuration loader
-├── sidechannel_runner.py  # sidechannel AI assistant (OpenAI / Grok provider)
+├── nightwire_runner.py    # nightwire AI assistant (OpenAI / Grok provider)
 ├── security.py         # Auth, rate limiting, path validation, input sanitization
 ├── project_manager.py  # Multi-project management
 ├── plugin_base.py      # Plugin base class and PluginContext API
@@ -65,8 +65,8 @@ pip install -e ".[dev]"
 # pip install pytest pytest-asyncio black ruff
 
 # Run linting
-ruff check sidechannel/
-black --check sidechannel/
+ruff check nightwire/
+black --check nightwire/
 
 # Run tests
 python -m pytest tests/ -v --tb=short
@@ -74,11 +74,11 @@ python -m pytest tests/ -v --tb=short
 
 ## Writing Plugins
 
-sidechannel supports custom plugins in the `plugins/` directory. See `plugins/README.md` for the full guide.
+nightwire supports custom plugins in the `plugins/` directory. See `plugins/README.md` for the full guide.
 
 Quick start:
 1. Create `plugins/my_plugin/plugin.py`
-2. Subclass `SidechannelPlugin` from `sidechannel.plugin_base`
+2. Subclass `NightwirePlugin` from `nightwire.plugin_base`
 3. Override `commands()`, `message_matchers()`, `on_start()`, `on_stop()`, `help_sections()` as needed
 4. Add config to `config/settings.yaml` under `plugins.my_plugin`
 5. Restart the bot — your plugin loads automatically

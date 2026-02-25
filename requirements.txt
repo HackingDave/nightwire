@@ -1,4 +1,4 @@
-# sidechannel dependencies
+# nightwire dependencies
 
 # Core
 aiohttp>=3.9.0

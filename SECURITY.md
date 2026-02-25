@@ -13,7 +13,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do NOT open a public issue**
-2. Email: [create a GitHub Security Advisory](https://github.com/hackingdave/sidechannel/security/advisories/new)
+2. Email: [create a GitHub Security Advisory](https://github.com/hackingdave/nightwire/security/advisories/new)
 3. Include: description, steps to reproduce, potential impact, suggested fix (if any)
 
 You should receive a response within 48 hours. We will work with you to understand and address the issue before any public disclosure.
@@ -51,9 +51,9 @@ You should receive a response within 48 hours. We will work with you to understa
 ## Operational Security Best Practices
 
 ### Run as Dedicated User
-- Create a dedicated low-privilege user (e.g., `sidechannel`) for the bot
+- Create a dedicated low-privilege user (e.g., `nightwire`) for the bot
 - **Never run as root** — the bot executes Claude CLI which can modify files
-- Restrict the user's home directory permissions: `chmod 700 /home/sidechannel`
+- Restrict the user's home directory permissions: `chmod 700 /home/nightwire`
 
 ### Firewall Rules
 - The bot only needs outbound HTTPS (port 443) for the Anthropic API

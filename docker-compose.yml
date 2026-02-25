@@ -1,4 +1,4 @@
-# Signal CLI REST API bridge for sidechannel
+# Signal CLI REST API bridge for nightwire
 #
 # The bot runs natively (Python venv + systemd/launchd).
 # This compose file only runs the Signal messaging bridge.

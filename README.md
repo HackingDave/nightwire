@@ -1,4 +1,4 @@
-# Sidechannel
+# Nightwire
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
@@ -7,13 +7,13 @@
 
 A Signal messaging bot that integrates Claude AI for intelligent conversations, code assistance, and autonomous development tasks with independent verification, parallel execution, and production-grade reliability.
 
-## Why Sidechannel?
+## Why Nightwire?
 
-Most AI coding tools require you to sit at your computer. Sidechannel lets you manage your entire development workflow from your phone through Signal's end-to-end encrypted messaging. Whether you're commuting, in a meeting, or just away from your desk, you can:
+Most AI coding tools require you to sit at your computer. Nightwire lets you manage your entire development workflow from your phone through Signal's end-to-end encrypted messaging. Whether you're commuting, in a meeting, or just away from your desk, you can:
 
 - **Ship code from your phone** - Ask Claude to implement features, fix bugs, or refactor code on any of your projects, all from a Signal message
-- **Delegate complex projects** - Describe what you want built, and Sidechannel breaks it into a full PRD with stories and tasks, then executes them autonomously with parallel workers
-- **Never lose context** - Episodic memory with vector embeddings means Sidechannel remembers your conversations, project preferences, and past decisions across sessions
+- **Delegate complex projects** - Describe what you want built, and Nightwire breaks it into a full PRD with stories and tasks, then executes them autonomously with parallel workers
+- **Never lose context** - Episodic memory with vector embeddings means Nightwire remembers your conversations, project preferences, and past decisions across sessions
 - **Trust the output** - Every autonomous task is independently verified by a separate Claude context using a fail-closed security model. Code that introduces security issues or logic errors is rejected automatically
 - **Powered by Claude** - All code analysis, generation, and autonomous tasks run through Claude (via Claude CLI). Optionally add OpenAI or Grok as lightweight quick-response assistants for general questions that don't need project access
 - **Stay secure** - Phone number allowlist, end-to-end encryption via Signal, rate limiting, path validation hardening, and no message content logging
@@ -21,10 +21,10 @@ Most AI coding tools require you to sit at your computer. Sidechannel lets you m
 ### Key Benefits
 
 **Memory That Actually Works**
-Unlike chat-based tools that forget everything when you close a tab, Sidechannel's episodic memory system stores conversations with vector embeddings. When you ask Claude to work on something, it automatically retrieves relevant context from past conversations, stored memories, and project-specific knowledge. Your `/remember` facts persist forever. Session context groups related messages automatically.
+Unlike chat-based tools that forget everything when you close a tab, Nightwire's episodic memory system stores conversations with vector embeddings. When you ask Claude to work on something, it automatically retrieves relevant context from past conversations, stored memories, and project-specific knowledge. Your `/remember` facts persist forever. Session context groups related messages automatically.
 
 **Autonomous Development at Scale**
-Send `/complex Add user authentication with JWT tokens` and Sidechannel will:
+Send `/complex Add user authentication with JWT tokens` and Nightwire will:
 1. Use Claude to analyze the task and generate a full PRD
 2. Break it into stories with focused, atomic tasks
 3. Dispatch tasks to parallel workers (up to 10 concurrent)
@@ -47,7 +47,7 @@ Send `/complex Add user authentication with JWT tokens` and Sidechannel will:
 ```
 +-------------------+     +-------------------+     +---------------------+
 |                   |     |                   |     |                     |
-|  Signal Mobile    |<--->|  Signal CLI API   |<--->|    sidechannel      |
+|  Signal Mobile    |<--->|  Signal CLI API   |<--->|    nightwire        |
 |                   |     |  (Docker)         |     |    (Python)         |
 +-------------------+     +-------------------+     +---------------------+
                                                        |             |
@@ -81,8 +81,8 @@ Send `/complex Add user authentication with JWT tokens` and Sidechannel will:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hackingdave/sidechannel.git
-cd sidechannel
+git clone https://github.com/hackingdave/nightwire.git
+cd nightwire
 
 # Run the installer
 ./install.sh
@@ -95,8 +95,8 @@ The installer supports flags for advanced usage:
 ```bash
 ./install.sh --skip-signal    # Skip Signal pairing setup
 ./install.sh --skip-systemd   # Skip service installation
-./install.sh --restart        # Restart the sidechannel service
-./install.sh --uninstall      # Remove sidechannel service and containers
+./install.sh --restart        # Restart the nightwire service
+./install.sh --uninstall      # Remove nightwire service and containers
 ```
 
 ## Requirements
@@ -254,7 +254,7 @@ The autonomous system handles complex, multi-step development tasks. It breaks w
 
 ### Memory & Context
 
-The memory system gives Sidechannel persistent context across sessions. Conversations are automatically stored and indexed with vector embeddings for semantic search. You can also store explicit facts that persist forever.
+The memory system gives Nightwire persistent context across sessions. Conversations are automatically stored and indexed with vector embeddings for semantic search. You can also store explicit facts that persist forever.
 
 | Command | Description |
 |---------|-------------|
@@ -299,25 +299,25 @@ The memory system gives Sidechannel persistent context across sessions. Conversa
   → Searches memories and conversations across all projects
 ```
 
-### Sidechannel AI Assistant (Optional)
+### Nightwire AI Assistant (Optional)
 
 All code commands (`/ask`, `/do`, `/complex`) are powered by **Claude** via Claude CLI. Separately, you can enable a lightweight quick-response assistant backed by OpenAI (GPT-4o) or Grok for general knowledge questions that don't need project file access. This is optional — Claude handles all the real work.
 
 | Command | Description |
 |---------|-------------|
-| `/sidechannel <question>` | Ask the AI assistant anything |
-| `sidechannel <question>` | Same thing, without the slash |
+| `/nightwire <question>` | Ask the AI assistant anything |
+| `nightwire <question>` | Same thing, without the slash |
 
 **Examples:**
 
 ```
-/sidechannel what is the difference between REST and GraphQL?
+/nightwire what is the difference between REST and GraphQL?
   → Quick response comparing the two approaches
 
-sidechannel, explain kubernetes pods
+nightwire, explain kubernetes pods
   → Concise explanation of K8s pod concepts
 
-sidechannel what's the best way to handle JWT refresh tokens?
+nightwire what's the best way to handle JWT refresh tokens?
   → Practical advice on token refresh patterns
 ```
 
@@ -325,7 +325,7 @@ The provider is auto-detected from your API keys. If only `OPENAI_API_KEY` is se
 
 ### Auto-Update
 
-Sidechannel can check for updates automatically and notify you via Signal. Disabled by default.
+Nightwire can check for updates automatically and notify you via Signal. Disabled by default.
 
 ```yaml
 auto_update:
@@ -382,8 +382,8 @@ autonomous:
 # Rate Limiting
 # Currently hardcoded to 30 requests per 60-second window per user.
 
-# Optional: sidechannel AI assistant (supports OpenAI and Grok)
-sidechannel_assistant:
+# Optional: nightwire AI assistant (supports OpenAI and Grok)
+nightwire_assistant:
   enabled: false
   # provider: "openai"       # or "grok" — auto-detected from API keys if omitted
   # model: "gpt-4o"          # Default: gpt-4o (OpenAI) or grok-3-latest (Grok)
@@ -401,7 +401,7 @@ claude login
 ### Environment Variables (.env)
 
 ```bash
-# Optional (for sidechannel AI assistant) — set one or both
+# Optional (for nightwire AI assistant) — set one or both
 OPENAI_API_KEY=sk-...
 GROK_API_KEY=xai-...
 
@@ -440,7 +440,7 @@ projects:
 ### Manual Start
 
 ```bash
-cd /path/to/sidechannel
+cd /path/to/nightwire
 ./run.sh
 ```
 
@@ -448,33 +448,33 @@ cd /path/to/sidechannel
 
 ```bash
 # Start
-systemctl --user start sidechannel
+systemctl --user start nightwire
 
 # View logs
-journalctl --user -u sidechannel -f
+journalctl --user -u nightwire -f
 
 # Stop
-systemctl --user stop sidechannel
+systemctl --user stop nightwire
 ```
 
 ### Launchd Service (macOS)
 
 ```bash
 # Start
-launchctl load ~/Library/LaunchAgents/com.sidechannel.bot.plist
+launchctl load ~/Library/LaunchAgents/com.nightwire.bot.plist
 
 # View logs
-tail -f /path/to/sidechannel/logs/sidechannel.log
+tail -f /path/to/nightwire/logs/nightwire.log
 
 # Stop
-launchctl unload ~/Library/LaunchAgents/com.sidechannel.bot.plist
+launchctl unload ~/Library/LaunchAgents/com.nightwire.bot.plist
 ```
 
 ---
 
 ## Plugin Framework
 
-Sidechannel supports custom plugins so you can add your own functionality without touching the core codebase. Plugins are auto-discovered at startup, get their own config section, and integrate seamlessly with the bot's command system, message routing, and help output.
+Nightwire supports custom plugins so you can add your own functionality without touching the core codebase. Plugins are auto-discovered at startup, get their own config section, and integrate seamlessly with the bot's command system, message routing, and help output.
 
 ### How Plugins Work
 
@@ -482,14 +482,14 @@ Sidechannel supports custom plugins so you can add your own functionality withou
 plugins/
 ├── my_plugin/
 │   ├── __init__.py        # Required (can be empty)
-│   ├── plugin.py          # Required — contains your SidechannelPlugin subclass
+│   ├── plugin.py          # Required — contains your NightwirePlugin subclass
 │   └── README.md          # Optional — plugin documentation
 └── another_plugin/
     ├── __init__.py
     └── plugin.py
 ```
 
-At startup, the bot scans `plugins/` for directories containing `plugin.py`, finds your `SidechannelPlugin` subclass, and registers its commands, message matchers, and help sections. Broken or disabled plugins are logged and skipped — they never crash the bot.
+At startup, the bot scans `plugins/` for directories containing `plugin.py`, finds your `NightwirePlugin` subclass, and registers its commands, message matchers, and help sections. Broken or disabled plugins are logged and skipped — they never crash the bot.
 
 ### Quick Start: Your First Plugin
 
@@ -503,10 +503,10 @@ touch plugins/hello_world/__init__.py
 **2. Write `plugins/hello_world/plugin.py`:**
 
 ```python
-from sidechannel.plugin_base import SidechannelPlugin, HelpSection
+from nightwire.plugin_base import NightwirePlugin, HelpSection
 
 
-class HelloWorldPlugin(SidechannelPlugin):
+class HelloWorldPlugin(NightwirePlugin):
     name = "hello_world"
     description = "A simple example plugin"
     version = "1.0.0"
@@ -538,7 +538,7 @@ plugins:
 
 ### Plugin API Reference
 
-Every plugin inherits from `SidechannelPlugin` and receives a `PluginContext` object (`self.ctx`) for interacting with the bot.
+Every plugin inherits from `NightwirePlugin` and receives a `PluginContext` object (`self.ctx`) for interacting with the bot.
 
 #### Class Attributes
 
@@ -577,10 +577,10 @@ A plugin that adds a `/weather` command:
 
 ```python
 import aiohttp
-from sidechannel.plugin_base import SidechannelPlugin, HelpSection
+from nightwire.plugin_base import NightwirePlugin, HelpSection
 
 
-class WeatherPlugin(SidechannelPlugin):
+class WeatherPlugin(NightwirePlugin):
     name = "weather"
     description = "Check the weather"
     version = "1.0.0"
@@ -635,10 +635,10 @@ A plugin that intercepts messages matching a pattern (no `/command` needed):
 
 ```python
 import re
-from sidechannel.plugin_base import SidechannelPlugin, MessageMatcher
+from nightwire.plugin_base import NightwirePlugin, MessageMatcher
 
 
-class ReminderPlugin(SidechannelPlugin):
+class ReminderPlugin(NightwirePlugin):
     name = "reminder"
     description = "Set reminders with natural language"
     version = "1.0.0"
@@ -669,10 +669,10 @@ A plugin that runs a background task on a schedule:
 
 ```python
 import asyncio
-from sidechannel.plugin_base import SidechannelPlugin
+from nightwire.plugin_base import NightwirePlugin
 
 
-class HealthCheckPlugin(SidechannelPlugin):
+class HealthCheckPlugin(NightwirePlugin):
     name = "health_check"
     description = "Periodic health monitoring"
     version = "1.0.0"
@@ -744,24 +744,24 @@ MY_PLUGIN_SECRET=xyz789
 
 ### Message Routing Order
 
-When a message arrives, Sidechannel processes it in this order:
+When a message arrives, Nightwire processes it in this order:
 
 1. **`/command`** — Core commands (help, projects, ask, do, etc.) checked first
 2. **Plugin commands** — `/commands` registered by plugins, in load order
 3. **Plugin message matchers** — Sorted by priority (lower number = checked first)
-4. **Sidechannel assistant** — Messages starting with "sidechannel:" prefix
+4. **Nightwire assistant** — Messages starting with "nightwire:" prefix
 5. **Default** — Treated as `/do` if a project is selected
 
 Core commands always take precedence. If two plugins register the same `/command` name, the first-loaded plugin wins and a warning is logged.
 
 ## How the Memory System Works
 
-Sidechannel uses a multi-layered memory architecture built on SQLite with sqlite-vec for vector similarity search:
+Nightwire uses a multi-layered memory architecture built on SQLite with sqlite-vec for vector similarity search:
 
 1. **Automatic conversation storage** - Every message you send and every response is automatically stored with timestamps, project context, and command type
 2. **Session grouping** - Messages within a configurable timeout window (default: 30 min) are grouped into sessions for coherent context retrieval
 3. **Vector embeddings** - Stored messages are embedded using sentence-transformers (all-MiniLM-L6-v2) for semantic similarity search
-4. **Context injection** - When you run `/ask` or `/do`, Sidechannel automatically retrieves the most relevant past conversations and memories, injecting them into Claude's context window
+4. **Context injection** - When you run `/ask` or `/do`, Nightwire automatically retrieves the most relevant past conversations and memories, injecting them into Claude's context window
 5. **Explicit memories** - `/remember` facts are stored permanently and weighted higher in retrieval
 6. **Project isolation** - Memories are scoped to projects by default, with `/global` for cross-project knowledge
 7. **Token budgeting** - Retrieved context is capped at `max_context_tokens` (default: 1500) to leave room for Claude's actual work
@@ -817,8 +817,8 @@ The autonomous system is designed for tasks too large for a single Claude invoca
 
 ### Memory not persisting
 
-1. Check data directory exists: `ls /path/to/sidechannel/data`
-2. Verify SQLite database: `ls /path/to/sidechannel/data/*.db`
+1. Check data directory exists: `ls /path/to/nightwire/data`
+2. Verify SQLite database: `ls /path/to/nightwire/data/*.db`
 
 ## Contributing
 
