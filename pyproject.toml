@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sidechannel"
+name = "nightwire"
 version = "1.5.0"
 description = "A Signal messaging bot with Claude AI integration for intelligent conversations and autonomous development"
 readme = "README.md"
@@ -24,11 +24,11 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/hackingdave/sidechannel"
-"Bug Tracker" = "https://github.com/hackingdave/sidechannel/issues"
+Repository = "https://github.com/hackingdave/nightwire"
+"Bug Tracker" = "https://github.com/hackingdave/nightwire/issues"
 
 [project.scripts]
-sidechannel = "sidechannel.main:run"
+nightwire = "nightwire.main:run"
 
 [project.optional-dependencies]
 dev = [
@@ -43,7 +43,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["sidechannel*"]
+include = ["nightwire*"]
 
 [tool.black]
 line-length = 100

@@ -10,18 +10,18 @@ test:
 	python -m pytest tests/ -v --tb=short
 
 lint:
-	ruff check sidechannel/
-	black --check sidechannel/
+	ruff check nightwire/
+	black --check nightwire/
 
 format:
-	black sidechannel/ tests/
-	ruff check --fix sidechannel/
+	black nightwire/ tests/
+	ruff check --fix nightwire/
 
 typecheck:
-	python -m mypy sidechannel/ --ignore-missing-imports
+	python -m mypy nightwire/ --ignore-missing-imports
 
 security:
-	bandit -r sidechannel/ -c pyproject.toml || true
+	bandit -r nightwire/ -c pyproject.toml || true
 	safety check || true
 
 check: lint typecheck test security
