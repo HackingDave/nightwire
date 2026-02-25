@@ -386,7 +386,7 @@ autonomous:
 sidechannel_assistant:
   enabled: false
   # provider: "openai"       # or "grok" or "morpheus" — auto-detected from API keys if omitted
-  # model: "gpt-4o"          # Default: gpt-4o (OpenAI), grok-3-latest (Grok), or LMR-Hermes-3-Llama-3.1-70B (Morpheus)
+  # model: "gpt-4o"          # Default: gpt-4o (OpenAI), grok-3-latest (Grok), or glm-5 (Morpheus)
   # max_tokens: 1024
 ```
 

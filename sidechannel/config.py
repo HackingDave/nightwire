@@ -217,7 +217,7 @@ class Config:
         if provider == "openai":
             return "gpt-4o"
         if provider == "morpheus":
-            return "LMR-Hermes-3-Llama-3.1-70B"
+            return "glm-5"
         return "grok-3-latest"
 
     @property
