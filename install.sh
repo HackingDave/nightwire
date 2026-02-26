@@ -663,6 +663,54 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# Docker Sandbox (optional)
+# -----------------------------------------------------------------------------
+SANDBOX_ENABLED=false
+
+if [ "$DOCKER_OK" = true ]; then
+    echo ""
+    echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs Claude CLI inside a container"
+    echo "  for additional security isolation. Requires building a Docker image (~400MB)."
+    echo ""
+    read -p "  Enable Docker sandbox? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "  Building sandbox image..."
+        if docker build -t nightwire-sandbox:latest -f "$INSTALL_DIR/Dockerfile.sandbox" "$INSTALL_DIR" > /dev/null 2>&1; then
+            echo -e "  ${GREEN}✓${NC} Sandbox image built (nightwire-sandbox:latest)"
+            SANDBOX_ENABLED=true
+
+            # Enable sandbox in settings.yaml
+            if grep -q "^# sandbox:" "$SETTINGS_FILE" 2>/dev/null; then
+                sed_inplace 's/^# sandbox:/sandbox:/' "$SETTINGS_FILE"
+                sed_inplace 's/^#   enabled: false/  enabled: true/' "$SETTINGS_FILE"
+                sed_inplace 's/^#   image: "nightwire-sandbox:latest"/  image: "nightwire-sandbox:latest"/' "$SETTINGS_FILE"
+                sed_inplace 's/^#   network: false/  network: false/' "$SETTINGS_FILE"
+                sed_inplace 's/^#   memory_limit: "2g"/  memory_limit: "2g"/' "$SETTINGS_FILE"
+                sed_inplace 's/^#   cpu_limit: 2.0/  cpu_limit: 2.0/' "$SETTINGS_FILE"
+                sed_inplace 's/^#   tmpfs_size: "256m"/  tmpfs_size: "256m"/' "$SETTINGS_FILE"
+            else
+                cat >> "$SETTINGS_FILE" << 'SANDBOXEOF'
+
+# Docker Sandbox
+sandbox:
+  enabled: true
+  image: "nightwire-sandbox:latest"
+  network: false
+  memory_limit: "2g"
+  cpu_limit: 2.0
+  tmpfs_size: "256m"
+SANDBOXEOF
+            fi
+            echo -e "  ${GREEN}✓${NC} Sandbox enabled in config"
+        else
+            echo -e "  ${YELLOW}!${NC} Failed to build sandbox image. Skipping."
+            echo "    You can build it later: docker build -t nightwire-sandbox:latest -f Dockerfile.sandbox ."
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # Signal Pairing — automatic, no choices
 # -----------------------------------------------------------------------------
 SIGNAL_PAIRED=false
