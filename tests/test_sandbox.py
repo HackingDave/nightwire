@@ -129,3 +129,26 @@ def test_validate_docker_available_not_running():
         available, msg = validate_docker_available()
         assert available is False
         assert "not running" in msg.lower()
+
+
+def test_validate_docker_available_timeout():
+    """Should return False with message when Docker daemon times out."""
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 10)):
+        from nightwire.sandbox import validate_docker_available
+        available, msg = validate_docker_available()
+        assert available is False
+        assert "did not respond" in msg.lower()
+
+
+def test_sandbox_hardening_flags():
+    """Sandbox should include container hardening flags."""
+    config = SandboxConfig(enabled=True)
+    cmd = ["claude", "--print"]
+    project_path = Path("/home/user/projects/myapp")
+
+    result = build_sandbox_command(cmd, project_path, config)
+
+    assert "--cap-drop" in result
+    assert "ALL" in result
+    assert "--pids-limit" in result
+    assert "--user" in result
