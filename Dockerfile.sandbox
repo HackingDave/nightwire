@@ -1,13 +1,18 @@
-FROM node:20-slim
+FROM python:3.11-slim
 
-# Install git
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+# Install git, curl, and npm (which pulls nodejs natively)
+RUN apt-get update && apt-get install -y git curl npm && rm -rf /var/lib/apt/lists/*
 
 # Install claude-code globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Node image already has user `node` with UID 1000 and GID 1000.
-# We will use that user.
+# Install uv for fast Python packaging (requested by user)
+RUN pip install uv
+
+# Create a non-root runtime user (UID/GID 1000 for keep-id mapping)
+RUN groupadd -g 1000 node && useradd -m -u 1000 -g 1000 node
+
+# Prepare Claude config for non-interactive execution
 RUN mkdir -p /home/node/.claude && \
     echo '{"theme":"light","autoUpdaterStatus":"disabled","optedIntoTengu":true,"optedIntoMacApp":true}' > /home/node/.claude/config.json && \
     chown -R node:node /home/node
