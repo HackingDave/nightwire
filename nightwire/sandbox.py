@@ -1,8 +1,9 @@
 """Docker sandbox for task execution."""
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 import structlog
 
@@ -13,11 +14,41 @@ logger = structlog.get_logger()
 class SandboxConfig:
     """Configuration for Docker sandbox."""
     enabled: bool = False
-    image: str = "python:3.11-slim"
+    image: str = "nightwire-sandbox:latest"
     network: bool = False
     memory_limit: str = "2g"
     cpu_limit: float = 2.0
     tmpfs_size: str = "256m"
+
+
+def validate_docker_available() -> Tuple[bool, str]:
+    """Check if Docker daemon is accessible.
+
+    Returns:
+        Tuple of (available, error_message). error_message is empty if available.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False, (
+                "Docker daemon is not running. "
+                "Start Docker or disable sandbox in config/settings.yaml."
+            )
+        return True, ""
+    except FileNotFoundError:
+        return False, (
+            "Docker is not installed. "
+            "Install Docker or disable sandbox in config/settings.yaml."
+        )
+    except subprocess.TimeoutExpired:
+        return False, (
+            "Docker daemon did not respond. "
+            "Check Docker status or disable sandbox in config/settings.yaml."
+        )
 
 
 def build_sandbox_command(
@@ -47,10 +78,8 @@ def build_sandbox_command(
     if not config.network:
         docker_cmd.append("--network=none")
 
-    # Pass through essential env vars
+    # Pass through essential env vars (not PATH — container has its own)
     docker_cmd.extend([
-        "-e", "HOME",
-        "-e", "PATH",
         "-e", "ANTHROPIC_API_KEY",
     ])
 
