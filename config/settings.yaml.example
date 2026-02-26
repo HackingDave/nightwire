@@ -100,7 +100,7 @@ nightwire_assistant:
 # Runs Claude task execution inside a Docker container for isolation
 # sandbox:
 #   enabled: false
-#   image: "python:3.11-slim"
+#   image: "nightwire-sandbox:latest"
 #   network: false           # Deny network access in sandbox
 #   memory_limit: "2g"
 #   cpu_limit: 2.0

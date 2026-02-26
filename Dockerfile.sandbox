@@ -1,0 +1,18 @@
+FROM node:20-slim
+
+# Install git
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Install claude-code globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Node image already has user `node` with UID 1000 and GID 1000.
+# We will use that user.
+RUN mkdir -p /home/node/.claude && \
+    echo '{"theme":"light","autoUpdaterStatus":"disabled","optedIntoTengu":true,"optedIntoMacApp":true}' > /home/node/.claude/config.json && \
+    chown -R node:node /home/node
+
+USER node
+ENV CI=1
+ENV HOME=/home/node
+WORKDIR /workspace

@@ -23,6 +23,7 @@ RETRY_BASE_DELAY = 5  # seconds
 
 class ErrorCategory(str, Enum):
     """Classification of Claude CLI errors for retry decisions."""
+
     TRANSIENT = "transient"
     PERMANENT = "permanent"
     INFRASTRUCTURE = "infrastructure"
@@ -52,9 +53,15 @@ def classify_error(return_code: int, output: str, error_text: str) -> ErrorCateg
     # Rate limit errors - check for subscription-level patterns first
     if "rate limit" in combined or "429" in combined:
         subscription_patterns = (
-            "usage limit", "daily limit", "capacity", "overloaded",
-            "too many requests", "try again later", "quota exceeded",
-            "hourly limit", "subscription",
+            "usage limit",
+            "daily limit",
+            "capacity",
+            "overloaded",
+            "too many requests",
+            "try again later",
+            "quota exceeded",
+            "hourly limit",
+            "subscription",
         )
         for pattern in subscription_patterns:
             if pattern in combined:
@@ -101,6 +108,7 @@ class ClaudeRunner:
     def set_project(self, project_path: Path):
         """Set the current project directory."""
         from .security import validate_project_path
+
         validated = validate_project_path(str(project_path))
         if validated is None:
             raise ValueError(f"Project path validation failed: access denied")
@@ -132,6 +140,7 @@ class ClaudeRunner:
         """
         # Check cooldown before doing any work
         from .rate_limit_cooldown import get_cooldown_manager
+
         cooldown = get_cooldown_manager()
         if cooldown.is_active:
             state = cooldown.get_state()
@@ -170,14 +179,15 @@ class ClaudeRunner:
             "--print",
             "--dangerously-skip-permissions",
             "--verbose",
-            "--max-turns", str(self.config.claude_max_turns),
+            "--max-turns",
+            str(self.config.claude_max_turns),
         ]
 
         logger.info(
             "claude_run_start",
             project=str(effective_project),
             prompt_length=len(prompt),
-            timeout=timeout
+            timeout=timeout,
         )
 
         last_error = ""
@@ -271,9 +281,7 @@ class ClaudeRunner:
                 elapsed_min = elapsed // 60
                 if progress_callback:
                     try:
-                        await progress_callback(
-                            f"Still working... ({elapsed_min} min elapsed)"
-                        )
+                        await progress_callback(f"Still working... ({elapsed_min} min elapsed)")
                     except Exception as e:
                         logger.warning("progress_callback_error", error=str(e))
 
@@ -291,11 +299,12 @@ class ClaudeRunner:
 
             # Optionally wrap in Docker sandbox
             from .sandbox import build_sandbox_command, SandboxConfig
+
             sandbox_settings = self.config.sandbox_config
             if sandbox_settings.get("enabled", False):
                 sandbox_cfg = SandboxConfig(
                     enabled=True,
-                    image=sandbox_settings.get("image", "python:3.11-slim"),
+                    image=sandbox_settings.get("image", "nightwire-sandbox:latest"),
                     network=sandbox_settings.get("network", False),
                     memory_limit=sandbox_settings.get("memory_limit", "2g"),
                     cpu_limit=sandbox_settings.get("cpu_limit", 2.0),
@@ -308,7 +317,7 @@ class ClaudeRunner:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=_subprocess_env
+                env=_subprocess_env,
             )
 
             if progress_callback:
@@ -316,10 +325,7 @@ class ClaudeRunner:
 
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    self._running_process.communicate(
-                        input=prompt.encode("utf-8")
-                    ),
-                    timeout=timeout
+                    self._running_process.communicate(input=prompt.encode("utf-8")), timeout=timeout
                 )
             except asyncio.TimeoutError:
                 self._running_process.kill()
@@ -351,7 +357,10 @@ class ClaudeRunner:
                 category = classify_error(return_code, output, errors)
 
                 combined_output = output + errors
-                if "prompt is too long" in combined_output or "Conversation too long" in combined_output:
+                if (
+                    "prompt is too long" in combined_output
+                    or "Conversation too long" in combined_output
+                ):
                     logger.warning("claude_token_limit", output=combined_output[:500])
                     return (
                         False,
