@@ -290,12 +290,17 @@ class ClaudeRunner:
             effective_cwd = project_path or self.current_project
 
             # Optionally wrap in Docker sandbox
-            from .sandbox import build_sandbox_command, SandboxConfig
+            from .sandbox import build_sandbox_command, SandboxConfig, validate_docker_available
             sandbox_settings = self.config.sandbox_config
             if sandbox_settings.get("enabled", False):
+                available, docker_error = validate_docker_available()
+                if not available:
+                    logger.error("sandbox_docker_unavailable", error=docker_error)
+                    return False, docker_error, ErrorCategory.INFRASTRUCTURE
+
                 sandbox_cfg = SandboxConfig(
                     enabled=True,
-                    image=sandbox_settings.get("image", "python:3.11-slim"),
+                    image=sandbox_settings.get("image", "nightwire-sandbox:latest"),
                     network=sandbox_settings.get("network", False),
                     memory_limit=sandbox_settings.get("memory_limit", "2g"),
                     cpu_limit=sandbox_settings.get("cpu_limit", 2.0),
