@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default sandbox image from `python:3.11-slim` to `nightwire-sandbox:latest`
 - Sandbox no longer passes host `PATH` to container (container uses its own)
 
+### Security
+- Container hardening: `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit 256`, `--user 1000:1000`
+- Docker socket permission errors now detected with actionable guidance
+
 ## [2.2.0] - 2026-02-25
 
 ### Changed
