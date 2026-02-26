@@ -5,6 +5,18 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-02-26
+
+### Added
+- Docker sandbox image (`Dockerfile.sandbox`) with Python 3.11 + Node.js 20 + Claude CLI for containerized execution
+- Docker availability validation — fail-closed with clear error when Docker is unavailable
+- Installer option to build sandbox image and enable sandbox config automatically
+- `tmpfs_size` sandbox configuration option (was hardcoded, now user-configurable)
+
+### Changed
+- Default sandbox image from `python:3.11-slim` to `nightwire-sandbox:latest`
+- Sandbox no longer passes host `PATH` to container (container uses its own)
+
 ## [2.2.0] - 2026-02-25
 
 ### Changed

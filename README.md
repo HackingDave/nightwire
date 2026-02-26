@@ -863,6 +863,32 @@ The autonomous system is designed for tasks too large for a single Claude invoca
 - [ ] Set `projects_base_path` and `allowed_paths` in config
 - [ ] Enable `plugin_allowlist` if using plugins
 - [ ] Review `SECURITY.md` for full operational security guide
+- [ ] Enable Docker sandbox for Claude task isolation (see below)
+
+### Docker Sandbox (Optional)
+
+For additional security, nightwire can run Claude CLI inside a Docker container. This limits the blast radius if Claude does something destructive — only the mounted project directory is accessible.
+
+**Setup:**
+
+```bash
+# Build the sandbox image
+docker build -t nightwire-sandbox:latest -f Dockerfile.sandbox .
+```
+
+Then enable in `config/settings.yaml`:
+
+```yaml
+sandbox:
+  enabled: true
+  image: "nightwire-sandbox:latest"
+  network: false           # Deny network access (recommended)
+  memory_limit: "2g"
+  cpu_limit: 2.0
+  tmpfs_size: "256m"
+```
+
+The installer offers sandbox setup automatically if Docker is available. When sandbox is enabled and Docker is unavailable, Claude tasks will fail with a clear error rather than falling back to native execution.
 
 ## Troubleshooting
 
