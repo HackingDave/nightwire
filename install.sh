@@ -665,8 +665,6 @@ fi
 # -----------------------------------------------------------------------------
 # Docker Sandbox (optional)
 # -----------------------------------------------------------------------------
-SANDBOX_ENABLED=false
-
 if [ "$DOCKER_OK" = true ]; then
     echo ""
     echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs Claude CLI inside a container"
@@ -675,14 +673,15 @@ if [ "$DOCKER_OK" = true ]; then
     read -p "  Enable Docker sandbox? [y/N] " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "  Building sandbox image..."
-        if docker build -t nightwire-sandbox:latest -f "$INSTALL_DIR/Dockerfile.sandbox" "$INSTALL_DIR" > /dev/null 2>&1; then
+        echo -e "  Building sandbox image (this may take a few minutes)..."
+        BUILD_LOG=$(mktemp)
+        if docker build -t nightwire-sandbox:latest -f "$INSTALL_DIR/Dockerfile.sandbox" "$INSTALL_DIR" > "$BUILD_LOG" 2>&1; then
+            rm -f "$BUILD_LOG"
             echo -e "  ${GREEN}✓${NC} Sandbox image built (nightwire-sandbox:latest)"
-            SANDBOX_ENABLED=true
 
-            # Enable sandbox in settings.yaml — append active config block
-            # (commented-out example in template stays as documentation)
-            cat >> "$SETTINGS_FILE" << 'SANDBOXEOF'
+            # Enable sandbox in settings.yaml — append if not already present
+            if ! grep -q "^sandbox:" "$SETTINGS_FILE" 2>/dev/null; then
+                cat >> "$SETTINGS_FILE" << 'SANDBOXEOF'
 
 # Docker Sandbox
 sandbox:
@@ -693,10 +692,15 @@ sandbox:
   cpu_limit: 2.0
   tmpfs_size: "256m"
 SANDBOXEOF
+            fi
             echo -e "  ${GREEN}✓${NC} Sandbox enabled in config"
         else
-            echo -e "  ${YELLOW}!${NC} Failed to build sandbox image. Skipping."
-            echo "    You can build it later: docker build -t nightwire-sandbox:latest -f Dockerfile.sandbox ."
+            echo -e "  ${YELLOW}!${NC} Failed to build sandbox image. Last 10 lines:"
+            tail -10 "$BUILD_LOG" 2>/dev/null | sed 's/^/    /'
+            rm -f "$BUILD_LOG"
+            echo ""
+            echo "    You can retry later:"
+            echo "    cd $INSTALL_DIR && docker build -t nightwire-sandbox:latest -f Dockerfile.sandbox ."
         fi
     fi
 fi

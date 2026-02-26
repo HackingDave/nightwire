@@ -44,6 +44,11 @@ def validate_docker_available() -> Tuple[bool, str]:
             "Docker is not installed. "
             "Install Docker or disable sandbox in config/settings.yaml."
         )
+    except PermissionError:
+        return False, (
+            "Permission denied accessing Docker. "
+            "Add your user to the docker group or disable sandbox in config/settings.yaml."
+        )
     except subprocess.TimeoutExpired:
         return False, (
             "Docker daemon did not respond. "

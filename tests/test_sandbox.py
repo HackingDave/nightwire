@@ -141,14 +141,31 @@ def test_validate_docker_available_timeout():
 
 
 def test_sandbox_hardening_flags():
-    """Sandbox should include container hardening flags."""
+    """Sandbox should include container hardening flags with correct values."""
     config = SandboxConfig(enabled=True)
     cmd = ["claude", "--print"]
     project_path = Path("/home/user/projects/myapp")
 
     result = build_sandbox_command(cmd, project_path, config)
 
-    assert "--cap-drop" in result
-    assert "ALL" in result
-    assert "--pids-limit" in result
-    assert "--user" in result
+    # Verify flag/value pairs are adjacent
+    cap_idx = result.index("--cap-drop")
+    assert result[cap_idx + 1] == "ALL"
+
+    pids_idx = result.index("--pids-limit")
+    assert result[pids_idx + 1] == "256"
+
+    user_idx = result.index("--user")
+    assert result[user_idx + 1] == "1000:1000"
+
+    sec_idx = result.index("--security-opt")
+    assert result[sec_idx + 1] == "no-new-privileges"
+
+
+def test_validate_docker_available_permission_denied():
+    """Should return False with message when Docker socket permissions denied."""
+    with patch("subprocess.run", side_effect=PermissionError):
+        from nightwire.sandbox import validate_docker_available
+        available, msg = validate_docker_available()
+        assert available is False
+        assert "permission denied" in msg.lower()

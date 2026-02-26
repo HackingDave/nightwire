@@ -8,7 +8,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude CLI globally
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code \
+    && npm cache clean --force
 
 # Create non-root sandbox user (UID 1000)
 RUN groupadd -g 1000 sandbox && useradd -m -u 1000 -g 1000 sandbox
@@ -21,4 +22,4 @@ RUN mkdir -p /home/sandbox/.claude \
 USER sandbox
 ENV CI=1
 ENV HOME=/home/sandbox
-WORKDIR /workspace
+WORKDIR /home/sandbox
