@@ -714,7 +714,7 @@ if [ "$SKIP_SIGNAL" = false ]; then
         --name signal-api \
         --restart unless-stopped \
         -p "$SIGNAL_BIND:8080:8080" \
-        -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+        -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli:Z" \
         -e MODE=native \
         bbernhard/signal-cli-rest-api:latest
 
@@ -817,7 +817,7 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
         --name signal-api \
         --restart unless-stopped \
         -p "127.0.0.1:8080:8080" \
-        -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+        -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli:Z" \
         -e MODE=json-rpc \
         bbernhard/signal-cli-rest-api:latest
 

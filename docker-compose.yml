@@ -15,6 +15,6 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ./signal-data:/home/.local/share/signal-cli
+      - ./signal-data:/home/.local/share/signal-cli:Z
     environment:
       - MODE=json-rpc
