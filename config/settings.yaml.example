@@ -97,10 +97,13 @@ nightwire_assistant:
 #   branch: "main"             # Git branch to track
 
 # Docker Sandbox (optional, default off)
-# Runs Claude task execution inside a Docker container for isolation
+# Runs Claude task execution inside a Docker container for isolation.
+# Requires building the sandbox image first:
+#   docker build -t nightwire-sandbox:latest -f Dockerfile.sandbox .
 # sandbox:
 #   enabled: false
-#   image: "python:3.11-slim"
+#   image: "nightwire-sandbox:latest"
 #   network: false           # Deny network access in sandbox
 #   memory_limit: "2g"
 #   cpu_limit: 2.0
+#   tmpfs_size: "256m"       # In-memory /tmp size
