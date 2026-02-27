@@ -405,10 +405,11 @@ class ClaudeRunner:
 
     async def cancel(self):
         """Cancel any running Claude process."""
-        if self._running_process:
-            self._running_process.kill()
-            await self._running_process.wait()
-            self._running_process = None
+        proc = self._running_process
+        self._running_process = None
+        if proc:
+            proc.kill()
+            await proc.wait()
             logger.info("claude_cancelled")
 
 

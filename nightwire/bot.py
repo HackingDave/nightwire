@@ -200,9 +200,23 @@ class SignalBot:
             await self.autonomous_manager.stop_loop()
         if self.nightwire_runner:
             await self.nightwire_runner.close()
+        # Cancel Claude process before closing session so background tasks
+        # can still send final messages if needed
+        await self.runner.cancel()
+        # Cancel any running background tasks and wait for them to finish
+        for sender, state in list(self._sender_tasks.items()):
+            task = state.get("task")
+            if task and not task.done():
+                task.cancel()
+        pending = [
+            s["task"] for s in self._sender_tasks.values()
+            if s.get("task") and not s["task"].done()
+        ]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        # Now safe to close session and database
         if self.session:
             await self.session.close()
-        await self.runner.cancel()
         await self.memory.close()
         logger.info("bot_stopped")
 
