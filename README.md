@@ -913,6 +913,10 @@ The installer offers sandbox setup automatically if Docker is available. When sa
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Contributors
+
+Thanks to everyone who has contributed code, bug reports, ideas, and testing. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full list.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
