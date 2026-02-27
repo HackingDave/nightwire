@@ -68,6 +68,8 @@ class SignalBot:
         self.running = False
         self.account: Optional[str] = None
         self._processed_messages = OrderedDict()  # Dedup: msg_hash -> timestamp
+        self._last_ws_activity = 0.0  # monotonic timestamp of last websocket activity
+        self._watchdog_task: Optional[asyncio.Task] = None
 
         # Per-sender task state tracking - allows concurrent tasks across users
         # Key: sender phone number, Value: dict with task, description, start, step
@@ -183,6 +185,9 @@ class SignalBot:
         self.cooldown_manager.on_activate(_cooldown_on_activate)
         self.cooldown_manager.on_deactivate(_cooldown_on_deactivate)
 
+        # Start health watchdog
+        self._watchdog_task = asyncio.create_task(self._health_watchdog())
+
         logger.info("bot_started", account=self.account)
 
     async def stop(self):
@@ -190,6 +195,13 @@ class SignalBot:
         if not self.running:
             return
         self.running = False
+        # Cancel watchdog
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
         # Stop plugins
         await self.plugin_loader.stop_all()
         if self.cooldown_manager:
@@ -1104,6 +1116,30 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             logger.error("nightwire_response_error", error=str(e), exc_type=type(e).__name__)
             return "The assistant encountered an error. Please try again later."
 
+    async def _health_watchdog(self):
+        """Periodic health check that monitors bot responsiveness.
+
+        Logs warnings if the websocket hasn't seen activity in a while,
+        and verifies the event loop is responsive.
+        """
+        WATCHDOG_INTERVAL = 60  # check every 60 seconds
+        WS_STALE_THRESHOLD = 600  # warn if no WS activity for 10 minutes
+
+        try:
+            while self.running:
+                await asyncio.sleep(WATCHDOG_INTERVAL)
+
+                if self._last_ws_activity > 0:
+                    idle_secs = _time.monotonic() - self._last_ws_activity
+                    if idle_secs > WS_STALE_THRESHOLD:
+                        logger.warning(
+                            "watchdog_ws_idle",
+                            idle_seconds=int(idle_secs),
+                            threshold=WS_STALE_THRESHOLD,
+                        )
+        except asyncio.CancelledError:
+            pass
+
     async def poll_messages(self):
         """Connect via WebSocket to receive messages (json-rpc mode)."""
         if not self.account:
@@ -1116,18 +1152,31 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
 
         reconnect_delay = 5
         MAX_RECONNECT_DELAY = 300
+        MESSAGE_HANDLING_TIMEOUT = 120  # seconds
 
         while self.running:
             try:
                 logger.info("websocket_connecting", url=ws_url)
                 async with self.session.ws_connect(ws_url, heartbeat=30) as ws:
                     logger.info("websocket_connected")
+                    self._last_ws_activity = _time.monotonic()
                     reconnect_delay = 5  # Reset on successful connection
                     async for msg in ws:
+                        self._last_ws_activity = _time.monotonic()
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             try:
                                 data = json.loads(msg.data)
-                                await self._handle_signal_message(data)
+                                await asyncio.wait_for(
+                                    self._handle_signal_message(data),
+                                    timeout=MESSAGE_HANDLING_TIMEOUT,
+                                )
+                            except asyncio.TimeoutError:
+                                logger.error(
+                                    "message_handling_timeout",
+                                    timeout=MESSAGE_HANDLING_TIMEOUT,
+                                    msg=str(data).get("envelope", {}).get("source", "unknown")[:20]
+                                    if isinstance(data, dict) else "unknown",
+                                )
                             except json.JSONDecodeError:
                                 logger.warning("invalid_json", data=msg.data[:100])
                         elif msg.type == aiohttp.WSMsgType.ERROR:

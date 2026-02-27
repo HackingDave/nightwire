@@ -1,6 +1,7 @@
 """SQLite database for memory storage with vector search support."""
 
 import asyncio
+import functools
 import json
 import sqlite3
 import threading
@@ -24,6 +25,20 @@ logger = structlog.get_logger()
 
 # Schema version for migrations
 SCHEMA_VERSION = 4
+
+
+def _locked(method):
+    """Decorator to serialize all sync database access via threading.Lock.
+
+    Prevents sqlite3.InterfaceError from concurrent thread access to
+    the same connection when asyncio.to_thread dispatches to multiple
+    thread pool workers simultaneously.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 class DatabaseConnection:
@@ -394,7 +409,13 @@ class DatabaseConnection:
     async def close(self) -> None:
         """Close the database connection."""
         if self._conn:
-            await asyncio.to_thread(self._conn.close)
+            await asyncio.to_thread(self._close_sync)
+
+    @_locked
+    def _close_sync(self) -> None:
+        """Close connection under lock to prevent close-while-writing."""
+        if self._conn:
+            self._conn.close()
             self._conn = None
 
     # User operations
@@ -402,6 +423,7 @@ class DatabaseConnection:
         """Get or create a user record."""
         return await asyncio.to_thread(self._ensure_user_sync, phone_number)
 
+    @_locked
     def _ensure_user_sync(self, phone_number: str) -> User:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -431,6 +453,7 @@ class DatabaseConnection:
         """Update user's last activity and message count."""
         await asyncio.to_thread(self._update_user_activity_sync, phone_number)
 
+    @_locked
     def _update_user_activity_sync(self, phone_number: str) -> None:
         cursor = self._conn.cursor()
         cursor.execute("""
@@ -455,6 +478,7 @@ class DatabaseConnection:
             timeout_minutes
         )
 
+    @_locked
     def _get_or_create_session_sync(
         self,
         phone_number: str,
@@ -499,6 +523,7 @@ class DatabaseConnection:
         """Increment session message count."""
         await asyncio.to_thread(self._update_session_count_sync, session_id)
 
+    @_locked
     def _update_session_count_sync(self, session_id: str) -> None:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -530,6 +555,7 @@ class DatabaseConnection:
             metadata
         )
 
+    @_locked
     def _store_conversation_sync(
         self,
         phone_number: str,
@@ -568,6 +594,7 @@ class DatabaseConnection:
             project_name
         )
 
+    @_locked
     def _get_history_sync(
         self,
         phone_number: str,
@@ -635,6 +662,7 @@ class DatabaseConnection:
             confidence
         )
 
+    @_locked
     def _store_preference_sync(
         self,
         phone_number: str,
@@ -671,6 +699,7 @@ class DatabaseConnection:
             category
         )
 
+    @_locked
     def _get_preferences_sync(
         self,
         phone_number: str,
@@ -723,6 +752,7 @@ class DatabaseConnection:
             project_name
         )
 
+    @_locked
     def _store_memory_sync(
         self,
         phone_number: str,
@@ -755,6 +785,7 @@ class DatabaseConnection:
             project_name
         )
 
+    @_locked
     def _get_memories_sync(
         self,
         phone_number: str,
@@ -795,6 +826,7 @@ class DatabaseConnection:
         """Delete all data for a user. Returns count of deleted records."""
         return await asyncio.to_thread(self._delete_all_user_data_sync, phone_number)
 
+    @_locked
     def _delete_all_user_data_sync(self, phone_number: str) -> int:
         cursor = self._conn.cursor()
         total = 0
@@ -831,6 +863,7 @@ class DatabaseConnection:
         """Delete all preferences for a user."""
         return await asyncio.to_thread(self._delete_preferences_sync, phone_number)
 
+    @_locked
     def _delete_preferences_sync(self, phone_number: str) -> int:
         cursor = self._conn.cursor()
         cursor.execute("DELETE FROM preferences WHERE phone_number = ?", (phone_number,))
@@ -841,11 +874,8 @@ class DatabaseConnection:
         """Delete today's conversations for a user."""
         return await asyncio.to_thread(self._delete_today_sync, phone_number)
 
+    @_locked
     def _delete_today_sync(self, phone_number: str) -> int:
-        with self._lock:
-            return self._delete_today_sync_inner(phone_number)
-
-    def _delete_today_sync_inner(self, phone_number: str) -> int:
         cursor = self._conn.cursor()
         today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -863,6 +893,7 @@ class DatabaseConnection:
             return None
         return await asyncio.to_thread(self._store_embedding_sync, embedding)
 
+    @_locked
     def _store_embedding_sync(self, embedding: List[float]) -> int:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -884,6 +915,7 @@ class DatabaseConnection:
             embedding_id
         )
 
+    @_locked
     def _update_conversation_embedding_sync(
         self,
         conversation_id: int,
@@ -912,6 +944,7 @@ class DatabaseConnection:
             limit
         )
 
+    @_locked
     def _search_by_embedding_sync(
         self,
         phone_number: str,

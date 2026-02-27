@@ -39,8 +39,16 @@ from .learnings import LearningExtractor
 
 logger = structlog.get_logger()
 
-# Lock to serialize git operations (prevents race conditions)
-_git_lock = asyncio.Lock()
+# Per-project locks to serialize git operations (prevents race conditions
+# while allowing parallel work on different projects)
+_git_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_git_lock(project_path: str) -> asyncio.Lock:
+    """Get or create an asyncio.Lock for a specific project path."""
+    if project_path not in _git_locks:
+        _git_locks[project_path] = asyncio.Lock()
+    return _git_locks[project_path]
 
 # Max attempts for verification fix loop
 MAX_VERIFICATION_FIX_ATTEMPTS = 2
@@ -138,7 +146,7 @@ class TaskExecutor:
         Returns True if checkpoint was created, False otherwise.
         """
         try:
-            async with _git_lock:
+            async with _get_git_lock(str(project_path)):
                 # Check if there are uncommitted changes
                 proc = await asyncio.create_subprocess_exec(
                     "git", "status", "--porcelain",
@@ -185,7 +193,7 @@ class TaskExecutor:
         Returns True if changes were committed.
         """
         try:
-            async with _git_lock:
+            async with _get_git_lock(str(project_path)):
                 proc = await asyncio.create_subprocess_exec(
                     "git", "status", "--porcelain",
                     cwd=str(project_path),
