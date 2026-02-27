@@ -5,6 +5,16 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-02-27
+
+### Fixed
+- Image attachment detection — attachments sent via Signal are now downloaded, saved, and passed to Claude for vision analysis
+- Attachment-only messages (no text) are now processed instead of silently dropped
+
+### Added
+- `attachments_dir` config option to customize where image attachments are saved (default: `data/attachments/`)
+- 18 new tests covering attachment download, save, and message pipeline integration
+
 ## [2.3.1] - 2026-02-27
 
 ### Added

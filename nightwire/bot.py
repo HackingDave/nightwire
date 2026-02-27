@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import aiohttp
 import structlog
 
+from .attachments import process_attachments
 from .config import get_config
 from .security import is_authorized, sanitize_input, check_rate_limit
 from .claude_runner import get_runner
@@ -291,7 +292,7 @@ class SignalBot:
         except Exception as e:
             logger.error("send_error", error=str(e))
 
-    async def _handle_command(self, command: str, args: str, sender: str) -> str:
+    async def _handle_command(self, command: str, args: str, sender: str, image_paths: Optional[list] = None) -> str:
         """Handle a bot command."""
         command = command.lower()
 
@@ -383,7 +384,7 @@ class SignalBot:
             return msg
 
         elif command == "ask":
-            if not args:
+            if not args and not image_paths:
                 return "Usage: /ask <question about the project>"
             if self.cooldown_manager and self.cooldown_manager.is_active:
                 return self.cooldown_manager.get_state().user_message
@@ -398,12 +399,13 @@ class SignalBot:
             self._start_background_task(
                 sender,
                 f"Answer this question about the codebase: {args}",
-                current_project
+                current_project,
+                image_paths=image_paths,
             )
             return None  # Response will be sent when task completes
 
         elif command == "do":
-            if not args:
+            if not args and not image_paths:
                 return "Usage: /do <task to perform>"
             if self.cooldown_manager and self.cooldown_manager.is_active:
                 return self.cooldown_manager.get_state().user_message
@@ -414,8 +416,9 @@ class SignalBot:
             if busy:
                 return busy
 
+            task_msg = args or "User sent an image attachment"
             await self._send_message(sender, "Working on it...")
-            self._start_background_task(sender, args, current_project)
+            self._start_background_task(sender, task_msg, current_project, image_paths=image_paths)
             return None  # Response will be sent when task completes
 
         elif command == "complex":
@@ -648,7 +651,8 @@ AI Assistant:
             logger.warning("memory_context_error", error=str(e))
             return None
 
-    def _start_background_task(self, sender: str, task_description: str, project_name: Optional[str]):
+    def _start_background_task(self, sender: str, task_description: str, project_name: Optional[str],
+                               image_paths: Optional[list] = None):
         """Start a Claude task in the background (non-blocking).
 
         This allows other commands to be processed while the task runs.
@@ -672,11 +676,19 @@ AI Assistant:
                 task_state["step"] = "Loading memory context..."
                 memory_context = await self._get_memory_context(sender, task_description, project_name)
 
+                # Append image attachment paths to the task description
+                effective_description = task_description
+                if image_paths:
+                    paths_section = "\n\n## Attached Images\n" + "\n".join(
+                        f"- {path}" for path in image_paths
+                    )
+                    effective_description = task_description + paths_section
+
                 task_state["step"] = "Claude executing task..."
                 # Pass project_path directly to avoid shared-state race condition
                 task_project_path = self.project_manager.get_current_path(sender)
                 success, response = await self.runner.run_claude(
-                    task_description,
+                    effective_description,
                     progress_callback=progress_cb,
                     memory_context=memory_context,
                     project_path=task_project_path,
@@ -944,8 +956,11 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             logger.error("prd_creation_error", error=str(e), exc_type=type(e).__name__)
             return "PRD creation failed. Please try again or check logs."
 
-    async def _process_message(self, sender: str, message: str):
+    async def _process_message(self, sender: str, message: str, image_paths: Optional[list] = None):
         """Process an incoming message."""
+        if image_paths is None:
+            image_paths = []
+
         # Check authorization
         if not is_authorized(sender):
             logger.warning("unauthorized_message", sender="..." + sender[-4:])
@@ -960,7 +975,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         # Sanitize input
         message = sanitize_input(message.strip())
 
-        if not message:
+        if not message and not image_paths:
             return
 
         logger.info(
@@ -989,21 +1004,22 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         t.add_done_callback(_log_task_exception)
 
         # Check if it's a command
-        if message.startswith("/"):
+        if message and message.startswith("/"):
             parts = message[1:].split(maxsplit=1)
             command = parts[0]
             args = parts[1] if len(parts) > 1 else ""
 
-            response = await self._handle_command(command, args, sender)
+            response = await self._handle_command(command, args, sender, image_paths=image_paths)
         else:
             # Check plugin message matchers
             response = None
-            for matcher in self.plugin_loader.get_sorted_matchers():
-                if matcher.match_fn(message):
-                    response = await matcher.handle_fn(sender, message)
-                    break
+            if message:
+                for matcher in self.plugin_loader.get_sorted_matchers():
+                    if matcher.match_fn(message):
+                        response = await matcher.handle_fn(sender, message)
+                        break
 
-            if response is None and self._is_nightwire_query(message):
+            if response is None and message and self._is_nightwire_query(message):
                 # Addressed to nightwire - general AI assistant mode
                 response = await self._nightwire_response(message)
             elif response is None:
@@ -1015,9 +1031,12 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     if busy:
                         response = busy
                     else:
+                        task_msg = message or "User sent an image attachment"
                         await self._send_message(sender, "Working on it...")
-                        self._start_background_task(sender, message, project_name)
+                        self._start_background_task(sender, task_msg, project_name, image_paths=image_paths)
                         return  # Response will be sent when task completes
+                elif image_paths:
+                    response = "I received your image(s), but no project is selected. Use /select <project> first."
                 else:
                     response = "No project selected. Use /projects to list or /select <project> to choose one."
 
@@ -1117,11 +1136,13 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             envelope = msg.get("envelope", {})
             source = envelope.get("source") or envelope.get("sourceNumber") or envelope.get("sourceUuid")
             message_text = None
+            attachments_list = []
 
             # Check for regular data message (from others TO us)
             data_message = envelope.get("dataMessage")
             if data_message:
                 message_text = data_message.get("message", "")
+                attachments_list = data_message.get("attachments") or []
 
             # Check for sync message (our own messages sent from another device)
             sync_message = envelope.get("syncMessage")
@@ -1138,10 +1159,27 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     # Only process if sent to ourselves (the bot's number)
                     if destination and destination == self.account:
                         message_text = sent_message.get("message", "")
+                        attachments_list = sent_message.get("attachments") or []
                         source = self.account
 
+            # Download and save any image attachments
+            image_paths = []
+            if attachments_list and source and self.session:
+                image_paths = await process_attachments(
+                    attachments=attachments_list,
+                    sender=source,
+                    session=self.session,
+                    signal_api_url=self.config.signal_api_url,
+                    attachments_dir=self.config.attachments_dir,
+                )
+                if image_paths:
+                    logger.info("attachments_processed", count=len(image_paths),
+                                sender="..." + source[-4:])
+
             # Ignore receipts, typing indicators, and other message types
-            if not message_text or not message_text.strip():
+            # Allow messages through if they have attachments even without text
+            has_text = message_text and message_text.strip()
+            if not has_text and not image_paths:
                 return
 
             # SECURITY: Only process messages from authorized sources
@@ -1150,7 +1188,8 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
 
             # Deduplication: Signal sends both dataMessage and syncMessage for self-messages
             timestamp = envelope.get("timestamp", 0)
-            msg_hash = hashlib.sha256(f"{timestamp}:{message_text.strip()}".encode()).hexdigest()
+            dedup_text = (message_text or "").strip()
+            msg_hash = hashlib.sha256(f"{timestamp}:{dedup_text}".encode()).hexdigest()
             if msg_hash in self._processed_messages:
                 logger.debug("duplicate_message_skipped", timestamp=timestamp)
                 return
@@ -1165,8 +1204,13 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 else:
                     break
 
-            logger.info("processing_message", source="..." + source[-4:], length=len(message_text))
-            await self._process_message(source, message_text)
+            # Default empty text for attachment-only messages
+            if not message_text:
+                message_text = ""
+
+            logger.info("processing_message", source="..." + source[-4:],
+                        length=len(message_text), attachments=len(image_paths))
+            await self._process_message(source, message_text, image_paths=image_paths)
 
         except Exception as e:
             logger.error("message_handling_error", error=str(e), msg=str(msg)[:200])

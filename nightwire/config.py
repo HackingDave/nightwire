@@ -373,6 +373,14 @@ class Config:
         return [Path(p).expanduser() for p in paths]
 
     @property
+    def attachments_dir(self) -> Path:
+        """Get attachments directory path."""
+        configured = self.settings.get("attachments_dir")
+        if configured:
+            return Path(configured).expanduser()
+        return Path(self.config_dir).parent / "data" / "attachments"
+
+    @property
     def plugins_dir(self) -> Path:
         """Get plugins directory path."""
         configured = self.settings.get("plugins_dir")

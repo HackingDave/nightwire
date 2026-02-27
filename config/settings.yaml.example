@@ -63,6 +63,10 @@ nightwire_assistant:
 
 # Legacy nova / grok config sections are still recognized for backward compatibility
 
+# Image Attachments
+# Directory where downloaded image attachments are saved (default: data/attachments/)
+# attachments_dir: "/home/user/nightwire/data/attachments"
+
 # Project directories
 # projects_base_path: "/home/user/projects"
 # allowed_paths:
