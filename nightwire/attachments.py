@@ -37,9 +37,11 @@ async def download_attachment(
     Returns:
         Attachment bytes or None if download fails
     """
-    # Validate attachment_id to prevent SSRF
-    if not re.match(r'^[a-zA-Z0-9_=-]+$', str(attachment_id)):
-        logger.warning("invalid_attachment_id", attachment_id=str(attachment_id)[:20])
+    # Validate attachment_id to prevent SSRF/path traversal
+    # Signal API returns IDs with file extensions (e.g., "09GIqaSf01wyBX0zokr7.jpg")
+    att_str = str(attachment_id)
+    if not re.match(r'^[a-zA-Z0-9_=.\-]+$', att_str) or '..' in att_str:
+        logger.warning("invalid_attachment_id", attachment_id=att_str[:20])
         return None
 
     try:

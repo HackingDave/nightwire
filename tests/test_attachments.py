@@ -23,9 +23,15 @@ class TestDownloadAttachment:
         return MagicMock(spec=aiohttp.ClientSession)
 
     @pytest.mark.asyncio
-    async def test_rejects_invalid_attachment_id(self, session):
-        """SSRF prevention: reject IDs with special characters."""
+    async def test_rejects_path_traversal(self, session):
+        """SSRF prevention: reject IDs with path traversal."""
         result = await download_attachment(session, "http://localhost:8080", "../etc/passwd")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_rejects_double_dot_traversal(self, session):
+        """SSRF prevention: reject IDs containing '..' even without slashes."""
+        result = await download_attachment(session, "http://localhost:8080", "..something")
         assert result is None
 
     @pytest.mark.asyncio
@@ -34,8 +40,46 @@ class TestDownloadAttachment:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_accepts_valid_attachment_id(self):
-        """Valid alphanumeric IDs should be accepted."""
+    async def test_accepts_attachment_id_with_extension(self):
+        """Signal API returns IDs with file extensions (e.g., '09GIqaSf01wyBX0zokr7.jpg')."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        async def fake_chunks():
+            yield b"image_data_here"
+
+        mock_resp.content.iter_chunked = MagicMock(return_value=fake_chunks())
+
+        session = MagicMock(spec=aiohttp.ClientSession)
+        session.get = MagicMock(return_value=mock_resp)
+
+        result = await download_attachment(session, "http://localhost:8080", "09GIqaSf01wyBX0zokr7.jpg")
+        assert result == b"image_data_here"
+
+    @pytest.mark.asyncio
+    async def test_accepts_attachment_id_with_hyphen(self):
+        """Signal API IDs may contain hyphens (e.g., '-nVtmdGVEJuCnLsmgc-Q.jpg')."""
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        async def fake_chunks():
+            yield b"image_data_here"
+
+        mock_resp.content.iter_chunked = MagicMock(return_value=fake_chunks())
+
+        session = MagicMock(spec=aiohttp.ClientSession)
+        session.get = MagicMock(return_value=mock_resp)
+
+        result = await download_attachment(session, "http://localhost:8080", "-nVtmdGVEJuCnLsmgc-Q.jpg")
+        assert result == b"image_data_here"
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_attachment_id_no_extension(self):
+        """Plain alphanumeric IDs should still be accepted."""
         mock_resp = AsyncMock()
         mock_resp.status = 200
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
@@ -123,7 +167,7 @@ class TestProcessAttachments:
         session.get = MagicMock(return_value=mock_resp)
 
         attachments = [
-            {"id": "attachment123", "contentType": "image/jpeg", "size": 1024},
+            {"id": "attachment123.jpg", "contentType": "image/jpeg", "size": 1024},
         ]
 
         result = await process_attachments(
@@ -207,7 +251,7 @@ class TestHandleSignalMessageAttachments:
                 "dataMessage": {
                     "message": "/do test with image",
                     "attachments": [
-                        {"id": "att1", "contentType": "image/png", "size": 100},
+                        {"id": "att1abc.png", "contentType": "image/png", "size": 100},
                     ],
                 },
             }
@@ -217,7 +261,7 @@ class TestHandleSignalMessageAttachments:
         data_message = msg["envelope"]["dataMessage"]
         attachments = data_message.get("attachments") or []
         assert len(attachments) == 1
-        assert attachments[0]["id"] == "att1"
+        assert attachments[0]["id"] == "att1abc.png"
         assert attachments[0]["contentType"] == "image/png"
 
     @pytest.mark.asyncio
@@ -232,7 +276,7 @@ class TestHandleSignalMessageAttachments:
                         "destination": "+15555551234",
                         "message": "test",
                         "attachments": [
-                            {"id": "att2", "contentType": "image/jpeg", "size": 200},
+                            {"id": "att2xyz.jpeg", "contentType": "image/jpeg", "size": 200},
                         ],
                     },
                 },
@@ -242,7 +286,7 @@ class TestHandleSignalMessageAttachments:
         sent_message = msg["envelope"]["syncMessage"]["sentMessage"]
         attachments = sent_message.get("attachments") or []
         assert len(attachments) == 1
-        assert attachments[0]["id"] == "att2"
+        assert attachments[0]["id"] == "att2xyz.jpeg"
 
     @pytest.mark.asyncio
     async def test_message_without_attachments(self):
