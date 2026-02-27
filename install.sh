@@ -22,6 +22,25 @@ sed_inplace() {
     fi
 }
 
+# Write runner selection to settings.yaml
+update_runner_settings() {
+    local settings="$1"
+    local rtype="$2"
+    local rpath="$3"
+
+    if ! grep -q "^runner:" "$settings" 2>/dev/null; then
+        cat >> "$settings" << RUNNEREOF
+
+# Code runner selection
+runner:
+  type: "${rtype}"
+RUNNEREOF
+        if [ -n "$rpath" ]; then
+            echo "  path: \"${rpath}\"" >> "$settings"
+        fi
+    fi
+}
+
 # Wait for Signal bridge QR code endpoint to be ready.
 # signal-cli inside the container needs time to fully initialize —
 # /v1/about returns OK first, but qrcodelink may not work yet.
@@ -325,6 +344,7 @@ UNINSTALL=false
 RESTART=false
 QUICK_MODE=false
 PHONE_NUMBER_ARG=""
+RUNNER_TYPE="claude"
 
 # Parse arguments
 for arg in "$@"; do
@@ -768,6 +788,22 @@ else
     fi
 fi
 
+# OpenCode CLI
+if command -v opencode &> /dev/null; then
+    echo -e "  ${GREEN}✓${NC} OpenCode CLI"
+elif [ -f "$HOME/.local/bin/opencode" ]; then
+    echo -e "  ${GREEN}✓${NC} OpenCode CLI ($HOME/.local/bin/opencode)"
+else
+    echo -e "  ${YELLOW}!${NC} OpenCode CLI not found"
+    echo -e "    nightwire can use OpenCode CLI for code commands (/ask, /do, /complex)."
+    echo -e "    Install: ${CYAN}https://opencode.ai/docs/cli${NC}"
+    read -p "    Continue anyway? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
 # curl (needed for Signal pairing verification)
 if ! command -v curl &> /dev/null; then
     echo -e "  ${YELLOW}!${NC} curl not found — installing..."
@@ -1014,6 +1050,35 @@ YAML
     fi
 fi
 
+# Runner selection
+if [ "$QUICK_MODE" = true ]; then
+    RUNNER_CHOICE="1"
+    echo -e "  ${BLUE}(--quick: defaulting to Claude CLI)${NC}"
+else
+    echo ""
+    echo -e "  ${BLUE}Code Runner:${NC} Choose which CLI handles code tasks (/ask, /do, /complex)."
+    echo ""
+    echo "    1) Claude CLI (default)"
+    echo "    2) OpenCode CLI"
+    echo ""
+    read -p "  > " RUNNER_CHOICE
+    echo ""
+fi
+
+RUNNER_TYPE="claude"
+RUNNER_PATH=""
+if [ "$RUNNER_CHOICE" = "2" ]; then
+    RUNNER_TYPE="opencode"
+    if command -v opencode &> /dev/null; then
+        RUNNER_PATH="$(command -v opencode)"
+    elif [ -f "$HOME/.local/bin/opencode" ]; then
+        RUNNER_PATH="$HOME/.local/bin/opencode"
+    fi
+fi
+
+# Persist runner selection in settings.yaml
+update_runner_settings "$SETTINGS_FILE" "$RUNNER_TYPE" "$RUNNER_PATH"
+
 # Get phone number (accept from --phone flag or prompt)
 if [ -n "$PHONE_NUMBER_ARG" ]; then
     PHONE_NUMBER="$PHONE_NUMBER_ARG"
@@ -1189,10 +1254,12 @@ if [ "$DOCKER_OK" = true ]; then
         REPLY="n"
     else
         echo ""
-        echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs Claude CLI inside a container."
-        echo "  This adds complexity and is only needed if you're working on sensitive"
-        echo "  projects that you don't want Claude to have access to — Claude is already"
-        echo "  restricted to the projects folder. Requires building a Docker image (~400MB)."
+        if [ "$RUNNER_TYPE" = "opencode" ]; then
+            echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs your selected code runner inside a container"
+        else
+            echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs Claude CLI inside a container"
+        fi
+        echo "  for additional security isolation. Requires building a Docker image (~400MB)."
         echo ""
         echo -e "  Most users should say ${GREEN}no${NC}."
         echo ""
