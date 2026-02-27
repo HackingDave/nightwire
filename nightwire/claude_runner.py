@@ -347,6 +347,10 @@ class ClaudeRunner:
                     except asyncio.CancelledError:
                         pass
 
+            if self._running_process is None:
+                # Process was cancelled externally (e.g. shutdown)
+                return False, "Claude process was cancelled.", ErrorCategory.INFRASTRUCTURE
+
             return_code = self._running_process.returncode
             self._running_process = None
 

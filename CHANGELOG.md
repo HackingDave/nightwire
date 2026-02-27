@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.4.0] - 2026-02-27
 
 ### Fixed
+- Guard against `AttributeError` when Claude process is cancelled externally during shutdown
 - Image attachment detection — attachments sent via Signal are now downloaded, saved, and passed to Claude for vision analysis
 - Attachment-only messages (no text) are now processed instead of silently dropped
 
