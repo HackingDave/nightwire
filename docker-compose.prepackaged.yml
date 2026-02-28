@@ -1,0 +1,29 @@
+# Signal CLI REST API bridge for nightwire (pre-patched image)
+#
+# Uses a locally-built Docker image with all signal-cli patches
+# baked in. No host-side patching or volume mounts required.
+#
+# Build the image first:
+#   docker build -t nightwire-signal:latest -f Dockerfile.signal .
+#
+# Usage:
+#   docker compose -f docker-compose.prepackaged.yml up -d
+#   docker compose -f docker-compose.prepackaged.yml logs -f signal-api
+
+services:
+  signal-api:
+    image: nightwire-signal:latest
+    container_name: signal-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./signal-data:/home/.local/share/signal-cli
+    environment:
+      - MODE=json-rpc
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/v1/about"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

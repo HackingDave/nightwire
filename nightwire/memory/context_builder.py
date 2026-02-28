@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from .models import Preference, ExplicitMemory, SearchResult
+from .models import Conversation, Preference, ExplicitMemory, SearchResult
 
 
 class ContextBuilder:
@@ -28,7 +28,8 @@ class ContextBuilder:
         explicit_memories: Optional[List[ExplicitMemory]] = None,
         relevant_history: Optional[List[SearchResult]] = None,
         summarized_context: Optional[str] = None,
-        current_project: Optional[str] = None
+        current_project: Optional[str] = None,
+        command_history: Optional[List[Conversation]] = None
     ) -> str:
         """Build a context section to prepend to prompts.
 
@@ -38,6 +39,7 @@ class ContextBuilder:
             relevant_history: Relevant past conversations
             summarized_context: Pre-summarized context (from Haiku)
             current_project: Current project name for filtering
+            command_history: Recent /do command history (chronological order)
 
         Returns:
             Formatted context string, or empty string if no context
@@ -58,6 +60,13 @@ class ContextBuilder:
             if mem_section and len(mem_section) < remaining_chars:
                 sections.append(mem_section)
                 remaining_chars -= len(mem_section)
+
+        # Add recent command history (prioritized over semantic search)
+        if command_history:
+            cmd_section = self._format_command_history(command_history, remaining_chars)
+            if cmd_section:
+                sections.append(cmd_section)
+                remaining_chars -= len(cmd_section)
 
         # Add summarized context if available (preferred over raw history)
         if summarized_context:
@@ -114,6 +123,49 @@ class ContextBuilder:
             if len(mem.memory_text) > 200:
                 text += "..."
             lines.append(f"- {text}")
+
+        return "\n".join(lines)
+
+    def _format_command_history(
+        self,
+        history: List[Conversation],
+        max_chars: int
+    ) -> str:
+        """Format recent /do command history as a conversation thread.
+
+        Shows recent commands and their results so Claude can maintain
+        continuity across sequential /do invocations.
+        """
+        if not history:
+            return ""
+
+        lines = ["## Recent Command History"]
+        current_length = len(lines[0])
+
+        for conv in history:
+            role = "User" if conv.role == "user" else "Claude"
+
+            content = conv.content
+            # Strip /do prefix from user messages for cleaner display
+            if conv.role == "user" and content.startswith("/do "):
+                content = content[4:]
+
+            # Truncate long responses (assistant responses can be very long)
+            max_content = 500 if conv.role == "assistant" else 300
+            if len(content) > max_content:
+                content = content[:max_content] + "..."
+
+            date = conv.timestamp.strftime("%Y-%m-%d")
+            line = f"[{date}] {role}: {content}"
+
+            if current_length + len(line) + 1 > max_chars:
+                break
+
+            lines.append(line)
+            current_length += len(line) + 1
+
+        if len(lines) == 1:  # Only header, no content
+            return ""
 
         return "\n".join(lines)
 

@@ -420,6 +420,18 @@ class MemoryManager:
         # Get explicit memories
         memories = await self.get_memories(phone_number, limit=10)
 
+        # Get recent command history for conversational continuity
+        command_history = None
+        if project_name:
+            try:
+                recent = await self.get_history(
+                    phone_number, limit=10, project_name=project_name
+                )
+                # get_history returns newest-first; reverse for chronological order
+                command_history = list(reversed(recent)) if recent else None
+            except Exception as e:
+                logger.warning("command_history_error", error=str(e))
+
         # Get relevant history using semantic search
         search_results = await self.semantic_search(phone_number, query, limit=max_results)
 
@@ -443,7 +455,8 @@ class MemoryManager:
             explicit_memories=memories,
             relevant_history=search_results if not summarized_context else None,
             summarized_context=summarized_context,
-            current_project=project_name
+            current_project=project_name,
+            command_history=command_history
         )
 
     # Deletion operations

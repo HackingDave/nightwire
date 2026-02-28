@@ -1,0 +1,91 @@
+# Nightwire Signal Bridge — pre-patched signal-cli
+#
+# Builds a signal-cli-rest-api image with all patches baked in,
+# eliminating the need for host-side patching and volume mounts.
+#
+# Multi-arch: works on both x86_64 and ARM64 (aarch64).
+#
+# Usage:
+#   docker build -t nightwire-signal:latest -f Dockerfile.signal .
+#   docker compose -f docker-compose.prepackaged.yml up -d
+#
+# Rebuild when patches change:
+#   docker build --no-cache -t nightwire-signal:latest -f Dockerfile.signal .
+
+FROM bbernhard/signal-cli-rest-api:latest
+
+ARG SIGNAL_CLI_VERSION=0.13.24
+ARG TURASA_VERSION=2.15.3_unofficial_138
+ARG TURASA_OLD=2.15.3_unofficial_137
+ARG LIBSIGNAL_VERSION=0.87.0
+
+USER root
+
+# Install build dependencies (curl may not be in base image)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy patch class files
+COPY patches/signal-cli/ /tmp/patches/
+
+# Download signal-cli JVM edition
+RUN curl -sfL \
+    "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}-Linux.tar.gz" \
+    | tar xz -C /opt/
+
+# Download native library for the build platform's architecture
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        aarch64|arm64) LIB_ARCH="arm64" ;; \
+        x86_64|amd64)  LIB_ARCH="amd64" ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -sfL \
+        "https://raw.githubusercontent.com/bbernhard/signal-cli-rest-api/master/ext/libraries/libsignal-client/v${LIBSIGNAL_VERSION}/${LIB_ARCH}/libsignal_jni.so" \
+        -o "/opt/signal-cli-${SIGNAL_CLI_VERSION}/lib/libsignal_jni.so"
+
+# Upgrade Turasa JARs (_137 -> _138)
+RUN LIB_DIR="/opt/signal-cli-${SIGNAL_CLI_VERSION}/lib" && \
+    for artifact in signal-service-java models-jvm util-jvm; do \
+        old_jar="$LIB_DIR/${artifact}-${TURASA_OLD}.jar"; \
+        new_jar="$LIB_DIR/${artifact}-${TURASA_VERSION}.jar"; \
+        if [ -f "$old_jar" ] && [ ! -f "$new_jar" ]; then \
+            curl -sfL \
+                "https://jitpack.io/com/github/niccokunzmann/${artifact}/${TURASA_VERSION}/${artifact}-${TURASA_VERSION}.jar" \
+                -o "$new_jar" && \
+            mv "$old_jar" "${old_jar}.old"; \
+        fi; \
+    done
+
+# Apply ProvisioningApi class patch to the Turasa JAR
+RUN python3 -c "\
+import zipfile, os, shutil, tempfile, sys; \
+jar = sys.argv[1]; src = sys.argv[2]; \
+pkg = 'org/whispersystems/signalservice/api/registration'; \
+entries = {}; \
+[entries.update({pkg+'/'+c: os.path.join(src,c)}) for c in os.listdir(src) if c.endswith('.class')]; \
+d = os.path.dirname(jar); \
+_, ti = tempfile.mkstemp(suffix='.jar', dir=d); \
+shutil.copy2(jar, ti); \
+_, to = tempfile.mkstemp(suffix='.jar', dir=d); \
+zi = zipfile.ZipFile(ti,'r'); zo = zipfile.ZipFile(to,'w',zipfile.ZIP_DEFLATED); \
+[zo.writestr(i, zi.read(i.filename)) for i in zi.infolist() if i.filename not in entries]; \
+[zo.write(p, e) for e,p in entries.items()]; \
+zi.close(); zo.close(); os.remove(ti); os.replace(to, jar)" \
+    "/opt/signal-cli-${SIGNAL_CLI_VERSION}/lib/signal-service-java-${TURASA_VERSION}.jar" \
+    /tmp/patches/
+
+# Update classpath references in the signal-cli launcher
+RUN sed -i "s/${TURASA_OLD}/${TURASA_VERSION}/g" \
+    "/opt/signal-cli-${SIGNAL_CLI_VERSION}/bin/signal-cli"
+
+# Replace the container's bundled signal-cli with the patched version
+RUN rm -rf /opt/signal-cli-0.13.23 && \
+    cp -a "/opt/signal-cli-${SIGNAL_CLI_VERSION}" /opt/signal-cli-0.13.23
+
+# Clean up
+RUN rm -rf /tmp/patches "/opt/signal-cli-${SIGNAL_CLI_VERSION}"
+
+# Set Java library path for the patched native libraries
+ENV JAVA_OPTS="-Djava.library.path=/opt/signal-cli-0.13.23/lib"

@@ -119,6 +119,8 @@ The installer supports flags for advanced usage:
 
 The bot runs natively in a Python venv, managed by systemd (Linux) or launchd (macOS). Docker is only used for the Signal bridge (signal-cli-rest-api).
 
+**ARM (aarch64/arm64):** The installer detects ARM and offers a pre-packaged Docker image with all signal-cli patches baked in — no host-side Java or manual patching required. This is the recommended path for ARM devices like Raspberry Pi and ARM cloud instances.
+
 ---
 
 ## Commands Reference
@@ -833,9 +835,10 @@ Nightwire uses a multi-layered memory architecture built on SQLite with sqlite-v
 2. **Session grouping** - Messages within a configurable timeout window (default: 30 min) are grouped into sessions for coherent context retrieval
 3. **Vector embeddings** - Stored messages are embedded using sentence-transformers (all-MiniLM-L6-v2) for semantic similarity search
 4. **Context injection** - When you run `/ask` or `/do`, Nightwire automatically retrieves the most relevant past conversations and memories, injecting them into Claude's context window
-5. **Explicit memories** - `/remember` facts are stored permanently and weighted higher in retrieval
-6. **Project isolation** - Memories are scoped to projects by default, with `/global` for cross-project knowledge
-7. **Token budgeting** - Retrieved context is capped at `max_context_tokens` (default: 1500) to leave room for Claude's actual work
+5. **Command history** - Sequential `/do` commands within a project maintain conversational continuity — Claude sees the last 10 messages so you can build on previous commands (e.g., `/do add a login page` then `/do add validation to it`)
+6. **Explicit memories** - `/remember` facts are stored permanently and weighted higher in retrieval
+7. **Project isolation** - Memories are scoped to projects by default, with `/global` for cross-project knowledge
+8. **Token budgeting** - Retrieved context is capped at `max_context_tokens` (default: 1500) to leave room for Claude's actual work
 
 This means Claude gets progressively smarter about your projects over time - it knows your conventions, past decisions, and what's been tried before.
 

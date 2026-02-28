@@ -5,6 +5,20 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-02-28
+
+### Added
+- `/do` command history: sequential `/do` commands now remember context from previous commands in the same project — Claude sees the last 10 messages as a conversation thread
+- Pre-packaged Signal Docker image option (`Dockerfile.signal`): builds a Docker image with all signal-cli patches baked in, eliminating host-side Java and manual patching
+- ARM architecture detection in installer: ARM users are prompted to use the pre-packaged image (recommended) instead of manual patching
+- `docker-compose.prepackaged.yml` for running the pre-packaged Signal image
+- 18 new tests for context builder command history formatting
+
+### Changed
+- `ContextBuilder.build_context_section()` accepts optional `command_history` parameter for recent /do command thread
+- `MemoryManager.get_relevant_context()` now fetches recent project history alongside semantic search
+- Systemd service template detects prepackaged mode and skips host-side patching when appropriate
+
 ## [2.4.2] - 2026-02-28
 
 ### Fixed

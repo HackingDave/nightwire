@@ -1022,6 +1022,80 @@ SANDBOXEOF
 fi
 
 # -----------------------------------------------------------------------------
+# Pre-packaged Signal Docker Image (recommended for ARM, optional for x86)
+# -----------------------------------------------------------------------------
+USE_PREPACKAGED=false
+PREPACKAGED_MARKER="$INSTALL_DIR/.use-prepackaged-signal"
+
+if [ "$DOCKER_OK" = true ] && [ "$SKIP_SIGNAL" = false ]; then
+    ARCH=$(uname -m)
+
+    # Check if already using prepackaged image from a previous install
+    if [ -f "$PREPACKAGED_MARKER" ]; then
+        USE_PREPACKAGED=true
+        echo -e "  ${GREEN}✓${NC} Using pre-packaged Signal image (from previous install)"
+    elif [ "$QUICK_MODE" = true ]; then
+        # In quick mode, use prepackaged on ARM by default
+        if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            USE_PREPACKAGED=true
+        fi
+    else
+        echo ""
+        if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            echo -e "  ${BLUE}ARM architecture detected.${NC}"
+            echo -e "  ${BLUE}Recommended:${NC} Build a pre-packaged Docker image with all signal-cli"
+            echo "  patches baked in. This is simpler and more reliable on ARM."
+            echo ""
+            echo "    1) Pre-packaged Docker image (recommended for ARM)"
+            echo "    2) Manual host-side patching (classic method)"
+            echo ""
+            read -p "    > " PREPACKAGED_CHOICE
+            echo ""
+            if [ "$PREPACKAGED_CHOICE" != "2" ]; then
+                USE_PREPACKAGED=true
+            fi
+        else
+            echo -e "  ${BLUE}Optional:${NC} Build a pre-packaged Docker image with signal-cli"
+            echo "  patches baked in (no host-side Java or patching required)."
+            echo ""
+            read -p "  Use pre-packaged Signal image? [y/N] " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                USE_PREPACKAGED=true
+            fi
+        fi
+    fi
+
+    if [ "$USE_PREPACKAGED" = true ]; then
+        # Check if image already exists
+        if docker image inspect nightwire-signal:latest &>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} Pre-packaged image already built (nightwire-signal:latest)"
+        else
+            echo -e "  Building pre-packaged Signal image (this may take a few minutes)..."
+            BUILD_LOG=$(mktemp)
+            if docker build -t nightwire-signal:latest -f "$INSTALL_DIR/Dockerfile.signal" "$INSTALL_DIR" > "$BUILD_LOG" 2>&1; then
+                rm -f "$BUILD_LOG"
+                echo -e "  ${GREEN}✓${NC} Pre-packaged image built (nightwire-signal:latest)"
+            else
+                echo -e "  ${YELLOW}!${NC} Failed to build pre-packaged image. Last 10 lines:"
+                tail -10 "$BUILD_LOG" 2>/dev/null | sed 's/^/    /'
+                rm -f "$BUILD_LOG"
+                echo ""
+                echo "    Falling back to manual patching."
+                echo "    You can retry later:"
+                echo "    cd $INSTALL_DIR && docker build -t nightwire-signal:latest -f Dockerfile.signal ."
+                USE_PREPACKAGED=false
+            fi
+        fi
+
+        # Write marker file so upgrades/restarts know which mode to use
+        if [ "$USE_PREPACKAGED" = true ]; then
+            echo "true" > "$PREPACKAGED_MARKER"
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # Signal Pairing — uses patched signal-cli on host for reliable linking
 # -----------------------------------------------------------------------------
 SIGNAL_PAIRED=false
@@ -1098,34 +1172,57 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
         COMPOSE="docker-compose"
     fi
 
-    if [ -n "$COMPOSE" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    # Choose compose file based on prepackaged image mode
+    if [ "$USE_PREPACKAGED" = true ]; then
+        COMPOSE_FILE="docker-compose.prepackaged.yml"
+    else
+        COMPOSE_FILE="docker-compose.yml"
+    fi
+
+    if [ -n "$COMPOSE" ] && [ -f "$INSTALL_DIR/$COMPOSE_FILE" ]; then
         cd "$INSTALL_DIR"
-        $COMPOSE up -d --force-recreate
+        $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate
         cd - > /dev/null
     else
         # Fallback: direct docker run (when docker compose is unavailable)
         docker rm -f signal-api 2>/dev/null || true
         sleep 1
 
-        # Build volume mount args for patched signal-cli if available
-        PATCH_MOUNT_ARGS=""
-        if [ -d "$INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}" ]; then
-            PATCH_MOUNT_ARGS="-v $INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}:/opt/signal-cli-0.13.23 -e JAVA_OPTS=-Djava.library.path=/opt/signal-cli-0.13.23/lib"
-        fi
+        if [ "$USE_PREPACKAGED" = true ]; then
+            # Pre-packaged image: no volume mounts for patches needed
+            docker run -d \
+                --name signal-api \
+                --restart unless-stopped \
+                --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
+                --health-interval 60s \
+                --health-timeout 10s \
+                --health-retries 3 \
+                --health-start-period 30s \
+                -p "127.0.0.1:8080:8080" \
+                -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+                -e MODE=json-rpc \
+                nightwire-signal:latest
+        else
+            # Classic mode: mount patched signal-cli from host
+            PATCH_MOUNT_ARGS=""
+            if [ -d "$INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}" ]; then
+                PATCH_MOUNT_ARGS="-v $INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}:/opt/signal-cli-0.13.23 -e JAVA_OPTS=-Djava.library.path=/opt/signal-cli-0.13.23/lib"
+            fi
 
-        docker run -d \
-            --name signal-api \
-            --restart unless-stopped \
-            --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
-            --health-interval 60s \
-            --health-timeout 10s \
-            --health-retries 3 \
-            --health-start-period 30s \
-            -p "127.0.0.1:8080:8080" \
-            -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
-            $PATCH_MOUNT_ARGS \
-            -e MODE=json-rpc \
-            bbernhard/signal-cli-rest-api:latest
+            docker run -d \
+                --name signal-api \
+                --restart unless-stopped \
+                --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
+                --health-interval 60s \
+                --health-timeout 10s \
+                --health-retries 3 \
+                --health-start-period 30s \
+                -p "127.0.0.1:8080:8080" \
+                -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+                $PATCH_MOUNT_ARGS \
+                -e MODE=json-rpc \
+                bbernhard/signal-cli-rest-api:latest
+        fi
     fi
 
     sleep 3
@@ -1181,8 +1278,8 @@ Type=simple
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=-$CONFIG_DIR/.env
-ExecStartPre=/bin/bash -c '[ -x $INSTALL_DIR/scripts/apply-signal-patches.sh ] && $INSTALL_DIR/scripts/apply-signal-patches.sh $INSTALL_DIR || true'
-ExecStartPre=/bin/bash -c 'cd $INSTALL_DIR && docker compose up -d 2>/dev/null || docker start signal-api 2>/dev/null || true'
+ExecStartPre=/bin/bash -c '[ -f $INSTALL_DIR/.use-prepackaged-signal ] || ([ -x $INSTALL_DIR/scripts/apply-signal-patches.sh ] && $INSTALL_DIR/scripts/apply-signal-patches.sh $INSTALL_DIR) || true'
+ExecStartPre=/bin/bash -c 'CFILE=docker-compose.yml; [ -f $INSTALL_DIR/.use-prepackaged-signal ] && CFILE=docker-compose.prepackaged.yml; cd $INSTALL_DIR && docker compose -f \$CFILE up -d 2>/dev/null || docker start signal-api 2>/dev/null || true'
 ExecStart=$VENV_DIR/bin/python3 -m nightwire
 StandardOutput=append:$LOGS_DIR/nightwire.log
 StandardError=append:$LOGS_DIR/nightwire.log
