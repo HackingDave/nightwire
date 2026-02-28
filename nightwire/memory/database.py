@@ -391,10 +391,10 @@ class DatabaseConnection:
         """Check if vector search is available."""
         return self._has_vec
 
-    def _parse_sqlite_timestamp(self, ts_str: Optional[str]) -> datetime:
-        """Parse SQLite CURRENT_TIMESTAMP format."""
+    def _parse_sqlite_timestamp(self, ts_str: Optional[str]) -> Optional[datetime]:
+        """Parse SQLite CURRENT_TIMESTAMP format. Returns None for null input."""
         if not ts_str:
-            return datetime.now()
+            return None
         try:
             # Try SQLite format first: 'YYYY-MM-DD HH:MM:SS'
             return datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
@@ -830,6 +830,22 @@ class DatabaseConnection:
     def _delete_all_user_data_sync(self, phone_number: str) -> int:
         cursor = self._conn.cursor()
         total = 0
+
+        # Delete orphaned embeddings first (before removing the referencing rows)
+        if self._has_vec:
+            try:
+                cursor.execute("""
+                    DELETE FROM embeddings WHERE rowid IN (
+                        SELECT embedding_id FROM conversations
+                        WHERE phone_number = ? AND embedding_id IS NOT NULL
+                        UNION
+                        SELECT embedding_id FROM explicit_memories
+                        WHERE phone_number = ? AND embedding_id IS NOT NULL
+                    )
+                """, (phone_number, phone_number))
+                total += cursor.rowcount
+            except Exception:
+                pass  # Vector table may not exist; proceed with data deletion
 
         cursor.execute("DELETE FROM conversations WHERE phone_number = ?", (phone_number,))
         total += cursor.rowcount

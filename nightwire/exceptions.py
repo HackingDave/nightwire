@@ -16,6 +16,7 @@ class ErrorCategory(str, Enum):
     TRANSIENT = "transient"          # Worth retrying (timeout, rate limit, process crash)
     PERMANENT = "permanent"          # Not worth retrying (bad input, token limit)
     INFRASTRUCTURE = "infrastructure"  # CLI not found, env issues
+    RATE_LIMITED = "rate_limited"     # Subscription/capacity rate limits
 
 
 class SignalBotError(Exception):

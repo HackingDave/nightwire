@@ -400,7 +400,7 @@ class SignalBot:
                 return "Usage: /remove <project_name>"
             success, msg = self.project_manager.remove_project(args)
             if success and self.project_manager.get_current_project(sender) is None:
-                self.runner.set_project(None)
+                self.runner.current_project = None
             return msg
 
         elif command == "new":
@@ -844,6 +844,8 @@ AI Assistant:
     def _start_prd_creation_task(self, sender: str, task_description: str, project_name: str):
         """Start PRD creation in the background (non-blocking)."""
         task_key = (sender, project_name)
+        # Capture project_path now to avoid TOCTOU race if user switches projects
+        project_path = self.project_manager.get_current_path(sender)
         task_state = {
             "description": f"Creating PRD: {task_description[:50]}...",
             "start": datetime.now(),
@@ -855,7 +857,9 @@ AI Assistant:
 
         async def run_prd_creation():
             try:
-                result = await self._create_autonomous_prd(sender, task_description)
+                result = await self._create_autonomous_prd(
+                    sender, task_description, project_name, project_path
+                )
                 await self._send_message(sender, f"[{project_name}] {result}")
             except asyncio.CancelledError:
                 await self._send_message(sender, f"[{project_name}] PRD creation cancelled.")
@@ -869,13 +873,20 @@ AI Assistant:
         task_state["task"] = asyncio.create_task(run_prd_creation())
         logger.info("prd_creation_started", task=task_description[:50], sender=sender, project=project_name)
 
-    async def _create_autonomous_prd(self, sender: str, task_description: str) -> str:
+    async def _create_autonomous_prd(
+        self, sender: str, task_description: str,
+        project_name: Optional[str] = None, project_path: Optional[Path] = None,
+    ) -> str:
         """Create a PRD with stories and tasks from a complex task description.
 
         Uses Claude to intelligently break down the task into manageable pieces.
+        project_name and project_path are captured at call time to avoid race
+        conditions if the user switches projects while this runs.
         """
-        project_name = self.project_manager.get_current_project(sender)
-        project_path = self.project_manager.get_current_path(sender)
+        if project_name is None:
+            project_name = self.project_manager.get_current_project(sender)
+        if project_path is None:
+            project_path = self.project_manager.get_current_path(sender)
         task_key = (sender, project_name)
 
         # Helper to update step and notify user

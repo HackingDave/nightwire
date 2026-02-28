@@ -28,6 +28,7 @@ class NightwireRunner:
         self.model = model
         self.max_tokens = max_tokens
         self._session: Optional[aiohttp.ClientSession] = None
+        self._session_lock = asyncio.Lock()
 
         # Validate API URL scheme and hostname
         parsed = urlparse(self.api_url)
@@ -43,10 +44,11 @@ class NightwireRunner:
             logger.warning("nightwire_api_key_not_found")
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create a shared aiohttp session."""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
+        """Get or create a shared aiohttp session (thread-safe)."""
+        async with self._session_lock:
+            if self._session is None or self._session.closed:
+                self._session = aiohttp.ClientSession()
+            return self._session
 
     async def close(self):
         """Close the shared HTTP session."""

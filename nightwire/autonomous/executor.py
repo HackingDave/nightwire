@@ -46,9 +46,7 @@ _git_locks: dict[str, asyncio.Lock] = {}
 
 def _get_git_lock(project_path: str) -> asyncio.Lock:
     """Get or create an asyncio.Lock for a specific project path."""
-    if project_path not in _git_locks:
-        _git_locks[project_path] = asyncio.Lock()
-    return _git_locks[project_path]
+    return _git_locks.setdefault(project_path, asyncio.Lock())
 
 # Max attempts for verification fix loop
 MAX_VERIFICATION_FIX_ATTEMPTS = 2

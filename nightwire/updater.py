@@ -142,11 +142,15 @@ class AutoUpdater:
                     await self.send_message(self.admin_phone,
                                             "Update applied successfully. Restarting...")
 
-                # Schedule exit via a proper async task (not call_later which
-                # can swallow SystemExit inside the event loop callback machinery)
+                # Schedule a hard exit after a short delay. We use os._exit()
+                # because SystemExit raised inside an asyncio task is silently
+                # swallowed by the event loop (treated as an unhandled task
+                # exception, not a process exit signal).
+                import os as _os
+
                 async def _delayed_exit():
                     await asyncio.sleep(2)
-                    raise SystemExit(EXIT_CODE_UPDATE)
+                    _os._exit(EXIT_CODE_UPDATE)
 
                 asyncio.create_task(_delayed_exit())
                 return "Update applied. Restarting..."

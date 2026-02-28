@@ -178,13 +178,12 @@ Example:
         if subcommand == "list":
             return await self._list_stories(phone, subargs)
         elif subcommand.isdigit():
-            # Could be showing a story or creating one
-            if "|" in subargs or not subargs:
-                # Creating a story: /story <prd_id> <title> | <description>
-                return await self._create_story(phone, int(subcommand), subargs)
-            else:
-                # Showing a story: /story <story_id>
+            if not subargs:
+                # No args after number: show story details (/story <id>)
                 return await self._show_story(phone, int(subcommand))
+            else:
+                # Has args: create a story in PRD (/story <prd_id> <title> | <desc>)
+                return await self._create_story(phone, int(subcommand), subargs)
         else:
             return self._story_help()
 

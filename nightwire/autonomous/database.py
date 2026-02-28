@@ -392,7 +392,7 @@ class AutonomousDatabase:
         """
         params: list = []
 
-        if prd_id:
+        if prd_id is not None:
             query += " AND s.prd_id = ?"
             params.append(prd_id)
 
@@ -671,7 +671,7 @@ class AutonomousDatabase:
         query = "SELECT * FROM tasks WHERE 1=1"
         params: list = []
 
-        if story_id:
+        if story_id is not None:
             query += " AND story_id = ?"
             params.append(story_id)
 
@@ -788,6 +788,31 @@ class AutonomousDatabase:
                 WHERE id = ?
             """,
                 (status.value, error_message, task_id),
+            )
+        elif status == TaskStatus.COMPLETED:
+            # On completion, explicitly clear error_message so stale errors
+            # from previous failed attempts don't persist.
+            cursor.execute(
+                """
+                UPDATE tasks
+                SET status = ?,
+                    started_at = COALESCE(?, started_at),
+                    completed_at = COALESCE(?, completed_at),
+                    error_message = NULL,
+                    claude_output = COALESCE(?, claude_output),
+                    files_changed = COALESCE(?, files_changed),
+                    quality_gate_results = COALESCE(?, quality_gate_results)
+                WHERE id = ?
+            """,
+                (
+                    status.value,
+                    self._format_timestamp(started_at),
+                    self._format_timestamp(completed_at),
+                    claude_output,
+                    files_json,
+                    qg_json,
+                    task_id,
+                ),
             )
         else:
             cursor.execute(
@@ -1132,18 +1157,22 @@ class AutonomousDatabase:
         for row in rows:
             stats[row["status"]] = row["count"]
 
-        # Get today's completed/failed counts
-        cursor.execute(
-            """
+        # Get today's completed/failed counts (apply same project filter)
+        sql2 = """
             SELECT
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_today,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_today
             FROM tasks
             WHERE phone_number = ?
             AND completed_at >= date('now')
-        """,
-            (phone_number,),
-        )
+        """
+        params2: list = [phone_number]
+
+        if project_name:
+            sql2 += " AND project_name = ?"
+            params2.append(project_name)
+
+        cursor.execute(sql2, params2)
         today_row = cursor.fetchone()
 
         return {

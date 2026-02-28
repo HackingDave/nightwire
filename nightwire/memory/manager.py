@@ -427,8 +427,8 @@ class MemoryManager:
                 recent = await self.get_history(
                     phone_number, limit=10, project_name=project_name
                 )
-                # get_history returns newest-first; reverse for chronological order
-                command_history = list(reversed(recent)) if recent else None
+                # get_history already returns in chronological order (oldest first)
+                command_history = recent if recent else None
             except Exception as e:
                 logger.warning("command_history_error", error=str(e))
 

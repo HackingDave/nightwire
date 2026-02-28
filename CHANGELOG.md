@@ -5,6 +5,29 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-02-28
+
+### Fixed
+- Auto-update restart: `SystemExit` in asyncio task was silently swallowed — replaced with `os._exit()` so the bot actually restarts after applying updates
+- `/remove` project crash: `set_project(None)` raised `ValueError` — now directly clears the runner's current project
+- PRD creation race condition: `_create_autonomous_prd` re-read project from mutable state — now captures project name/path at call time
+- Config crash on non-dict values: `nightwire_assistant: true` in settings.yaml caused `AttributeError` — added safe dict getter with type validation
+- `autonomous_max_parallel` now enforces a minimum of 1 (previously allowed 0 or negative values)
+- `/story <id>` incorrectly created a new story instead of showing story details when no args followed the ID
+- Completed tasks retained stale error messages from previous failed attempts due to `COALESCE` preserving old values — added explicit `COMPLETED` branch that clears `error_message`
+- Task statistics "today" counts were not filtered by project, mixing stats across all projects
+- Truthiness check on `story_id`/`prd_id` filters (ID 0 was silently ignored) — changed to explicit `is not None` checks
+- Git lock creation used non-atomic check-then-set — replaced with `dict.setdefault()` for atomicity
+- Memory command history was double-reversed, displaying in wrong chronological order
+- `/forget all` did not delete embedding vectors from the vector table — orphaned embeddings are now cleaned up (privacy fix)
+- `_parse_sqlite_timestamp` returned fabricated `datetime.now()` for null timestamps — now returns `None`
+- `ErrorCategory` enum in `exceptions.py` was missing `RATE_LIMITED` member (defined only in `claude_runner.py`)
+- `NightwireRunner._get_session()` race condition: concurrent calls could create duplicate leaked sessions — added `asyncio.Lock`
+- Daily verse plugin: `KeyError`/`IndexError` on malformed API response — added defensive `.get()` access
+- BluOS plugin: zones with empty IP config silently created broken `http://:11000` URLs — now skipped with warning
+- Volume regex `set <number>` matched inside words like "sunset" — added `\b` word boundary
+- NLP parser stripped "by" from music queries, breaking "play X by Artist" searches
+
 ## [2.5.0] - 2026-02-28
 
 ### Added
