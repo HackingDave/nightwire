@@ -63,6 +63,263 @@ wait_for_qrcode() {
     return 1
 }
 
+# =============================================================================
+# Signal CLI patching for device linking (ACI binary fix)
+# =============================================================================
+# signal-cli <= 0.13.24 has a bug where device linking fails because Signal
+# changed their provisioning protocol to send ACI as binary bytes instead of
+# a string. See: https://github.com/AsamK/signal-cli/issues/1937
+#
+# This downloads signal-cli JVM edition, applies a pre-compiled patch, and
+# uses it for device linking. The Docker container handles messaging after.
+# =============================================================================
+
+SIGNAL_CLI_VERSION="0.13.24"
+
+# Downloads, patches, and persists signal-cli for device linking.
+# Delegates download/patching to scripts/apply-signal-patches.sh.
+# Sets: JAVA_CMD, SIGNAL_CLI_CMD, SIGNAL_CLI_LIB_DIR, JAVA_HOME
+# Returns 0 on success, 1 on failure.
+prepare_link_tool() {
+    local install_dir="$1"
+
+    echo -e "  ${BLUE}Preparing device link tool...${NC}"
+
+    # 1. Find or install Java 21+
+    JAVA_CMD=""
+    for java_path in \
+        /usr/lib/jvm/java-21-*/bin/java \
+        /usr/lib/jvm/java-*/bin/java \
+        /opt/homebrew/opt/openjdk@21/bin/java \
+        /opt/homebrew/opt/openjdk/bin/java; do
+        if [ -x "$java_path" ] 2>/dev/null; then
+            java_ver=$("$java_path" -version 2>&1 | head -1 | sed 's/.*"\([0-9]*\).*/\1/' | head -1)
+            if [ "${java_ver:-0}" -ge 21 ]; then
+                JAVA_CMD="$java_path"
+                break
+            fi
+        fi
+    done
+
+    # Try bare 'java' command
+    if [ -z "$JAVA_CMD" ] && command -v java &>/dev/null; then
+        java_ver=$(java -version 2>&1 | head -1 | sed 's/.*"\([0-9]*\).*/\1/' | head -1)
+        if [ "${java_ver:-0}" -ge 21 ]; then
+            JAVA_CMD="java"
+        fi
+    fi
+
+    if [ -z "$JAVA_CMD" ]; then
+        echo -ne "  Installing Java 21 runtime..."
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get install -y -qq openjdk-21-jre-headless > /dev/null 2>&1
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y -q java-21-openjdk-headless > /dev/null 2>&1
+        elif command -v brew &>/dev/null; then
+            brew install --quiet openjdk@21 > /dev/null 2>&1
+        fi
+
+        for java_path in \
+            /usr/lib/jvm/java-21-*/bin/java \
+            /opt/homebrew/opt/openjdk@21/bin/java \
+            /opt/homebrew/opt/openjdk/bin/java; do
+            if [ -x "$java_path" ] 2>/dev/null; then
+                JAVA_CMD="$java_path"
+                break
+            fi
+        done
+
+        if [ -z "$JAVA_CMD" ]; then
+            echo -e " ${RED}failed${NC}"
+            echo -e "  ${RED}Java 21+ is required for device linking. Install manually and re-run.${NC}"
+            return 1
+        fi
+        echo -e " ${GREEN}done${NC}"
+    fi
+    echo -e "  ${GREEN}✓${NC} Java 21+"
+
+    # 2. Run the shared patch script to download & patch signal-cli
+    local patch_script="$install_dir/scripts/apply-signal-patches.sh"
+    if [ -x "$patch_script" ]; then
+        if ! bash "$patch_script" "$install_dir"; then
+            echo -e "  ${RED}Patch script failed${NC}"
+            return 1
+        fi
+    else
+        echo -e "  ${YELLOW}!${NC} Patch script not found at $patch_script"
+        return 1
+    fi
+
+    # Set up environment for signal-cli
+    JAVA_HOME=$(dirname "$(dirname "$JAVA_CMD")")
+    SIGNAL_CLI_CMD="$install_dir/signal-cli-${SIGNAL_CLI_VERSION}/bin/signal-cli"
+    SIGNAL_CLI_LIB_DIR="$install_dir/signal-cli-${SIGNAL_CLI_VERSION}/lib"
+
+    echo -e "  ${GREEN}✓${NC} Link tool ready"
+    return 0
+}
+
+# Runs device linking with QR code display and retry logic.
+# Args: $1=signal_data_dir $2=remote_mode(true/false)
+# Sets: LINKED_NUMBER on success
+# Returns 0 on success, 1 on failure.
+run_device_link() {
+    local config_dir="$1"
+    local remote_mode="$2"
+    local max_attempts=3
+    local attempt=0
+
+    # Install qrcode Python package for QR display
+    pip install -q qrcode 2>/dev/null || true
+
+    while [ $attempt -lt $max_attempts ]; do
+        attempt=$((attempt + 1))
+
+        if [ $attempt -gt 1 ]; then
+            echo ""
+            echo -e "  ${YELLOW}Retrying (attempt $attempt of $max_attempts)...${NC}"
+            echo -e "  Signal's provisioning window is 60 seconds — scan promptly."
+        fi
+
+        # Run signal-cli link in background, capture output
+        local link_log
+        link_log=$(mktemp)
+        JAVA_HOME="$JAVA_HOME" \
+            SIGNAL_CLI_OPTS="-Djava.library.path=$SIGNAL_CLI_LIB_DIR" \
+            "$SIGNAL_CLI_CMD" --config "$config_dir" link --name nightwire \
+            > "$link_log" 2>&1 &
+        LINK_PID=$!
+
+        # Wait for URI to appear in output (up to 20s)
+        local uri=""
+        local QR_SERVER_PID=""
+        for i in $(seq 1 20); do
+            uri=$(grep -o 'sgnl://[^ ]*' "$link_log" 2>/dev/null | head -1)
+            if [ -n "$uri" ]; then
+                break
+            fi
+            if ! kill -0 $LINK_PID 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+
+        if [ -z "$uri" ]; then
+            echo -e "  ${YELLOW}Failed to generate link URI.${NC}"
+            kill $LINK_PID 2>/dev/null
+            wait $LINK_PID 2>/dev/null || true
+            grep -i "error\|exception\|fail" "$link_log" 2>/dev/null | tail -3 | sed 's/^/    /'
+            rm -f "$link_log"
+            continue
+        fi
+
+        echo ""
+        echo -e "  ${GREEN}Link your phone to nightwire:${NC}"
+        echo ""
+
+        # Generate QR code in terminal
+        python3 -c "
+import sys
+try:
+    import qrcode
+    q = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
+    q.add_data(sys.argv[1])
+    q.make(fit=True)
+    q.print_ascii(invert=True)
+except ImportError:
+    print('  URI: ' + sys.argv[1])
+    print('  (Install qrcode for QR display: pip install qrcode)')
+" "$uri" 2>/dev/null | sed 's/^/    /'
+
+        # Serve QR as PNG via HTTP for remote scanning
+        if [ "$remote_mode" = "true" ]; then
+            local server_ip
+            server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+            [ -z "$server_ip" ] && server_ip=$(ipconfig getifaddr en0 2>/dev/null)
+            [ -z "$server_ip" ] && server_ip=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
+            [ -z "$server_ip" ] && server_ip="<your-server-ip>"
+
+            python3 - "$uri" << 'PYEOF' &
+import http.server, socketserver, sys, io, signal as sig
+sig.alarm(120)
+uri = sys.argv[1]
+try:
+    import qrcode
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    png_data = buf.getvalue()
+except Exception:
+    png_data = None
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if png_data:
+            self.send_response(200)
+            self.send_header('Content-type', 'image/png')
+            self.end_headers()
+            self.wfile.write(png_data)
+        else:
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(uri.encode())
+    def log_message(self, *a): pass
+s = socketserver.TCPServer(('0.0.0.0', 9090), H)
+s.socket.setsockopt(1, 2, 1)
+s.handle_request()
+PYEOF
+            QR_SERVER_PID=$!
+            echo ""
+            echo -e "    Or open in browser: ${CYAN}http://${server_ip}:9090/${NC}"
+        fi
+
+        echo ""
+        echo "    1. Open Signal on your phone"
+        echo "    2. Settings > Linked Devices > Link New Device"
+        echo "    3. Scan the QR code"
+        echo ""
+        echo -e "  ${BLUE}Waiting for link to complete...${NC}"
+
+        # Wait for signal-cli link process to finish (it blocks until linked or timeout)
+        local timeout=90
+        local waited=0
+        while kill -0 $LINK_PID 2>/dev/null && [ $waited -lt $timeout ]; do
+            sleep 2
+            waited=$((waited + 2))
+        done
+
+        # Clean up QR server
+        [ -n "$QR_SERVER_PID" ] && kill $QR_SERVER_PID 2>/dev/null
+        wait $QR_SERVER_PID 2>/dev/null || true
+
+        # Check result
+        if ! kill -0 $LINK_PID 2>/dev/null; then
+            local link_exit=0
+            wait $LINK_PID 2>/dev/null || link_exit=$?
+
+            if [ $link_exit -eq 0 ] && grep -q "Associated with" "$link_log" 2>/dev/null; then
+                LINKED_NUMBER=$(grep -o '+[0-9]*' "$link_log" | head -1)
+                rm -f "$link_log"
+                echo -e "  ${GREEN}✓${NC} Device linked: ${LINKED_NUMBER:-successfully}"
+                return 0
+            fi
+
+            echo -e "  ${YELLOW}Link did not complete (exit code $link_exit).${NC}"
+            grep -i "error\|fail\|exception" "$link_log" 2>/dev/null | tail -3 | sed 's/^/    /'
+        else
+            kill $LINK_PID 2>/dev/null
+            wait $LINK_PID 2>/dev/null || true
+            echo -e "  ${YELLOW}Link timed out.${NC}"
+        fi
+
+        rm -f "$link_log"
+    done
+
+    echo -e "  ${YELLOW}Could not complete device link after $max_attempts attempts.${NC}"
+    echo -e "  You can re-run the installer to try again."
+    return 1
+}
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -706,7 +963,7 @@ SANDBOXEOF
 fi
 
 # -----------------------------------------------------------------------------
-# Signal Pairing — automatic, no choices
+# Signal Pairing — uses patched signal-cli on host for reliable linking
 # -----------------------------------------------------------------------------
 SIGNAL_PAIRED=false
 
@@ -715,13 +972,9 @@ if [ "$SKIP_SIGNAL" = false ]; then
     echo -e "${BLUE}Signal Pairing${NC}"
     echo ""
 
-    # Start Signal bridge container
     mkdir -p "$SIGNAL_DATA_DIR"
 
-    echo -e "  Starting Signal bridge..."
-
     # Ask about remote access for QR code scanning
-    SIGNAL_BIND="127.0.0.1"
     REMOTE_MODE=false
     if [ -n "$SSH_CONNECTION" ]; then
         echo -e "  ${YELLOW}Remote session detected.${NC}"
@@ -731,118 +984,31 @@ if [ "$SKIP_SIGNAL" = false ]; then
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         REMOTE_MODE=true
-        SIGNAL_BIND="0.0.0.0"
-        echo -e "  Signal bridge will be ${YELLOW}temporarily${NC} exposed on all interfaces for QR scanning."
-        echo -e "  After pairing completes, it will be ${GREEN}automatically locked to localhost${NC}"
-        echo -e "  and will no longer be accessible remotely. This is for security."
+        echo -e "  QR code will be served on port 9090 for remote scanning."
+        echo -e "  After pairing, the port is ${GREEN}automatically closed${NC}."
         echo ""
     fi
 
-    # Start in native mode for QR code pairing
-    # Force-remove any existing signal-api container (--restart policy can race with stop/rm)
-    docker rm -f signal-api 2>/dev/null || true
-    sleep 1
-
-    # Also check if something else is holding port 8080
-    if docker ps --format '{{.Ports}}' 2>/dev/null | grep -q "0.0.0.0:8080\|127.0.0.1:8080"; then
-        BLOCKER=$(docker ps --format '{{.Names}}: {{.Ports}}' | grep ":8080" | head -1)
-        echo -e "  ${YELLOW}Port 8080 is in use by: $BLOCKER${NC}"
-        echo -e "  Stopping it..."
-        BLOCKER_NAME=$(echo "$BLOCKER" | cut -d: -f1)
-        docker rm -f "$BLOCKER_NAME" 2>/dev/null || true
-        sleep 1
-    fi
-
-    docker run -d \
-        --name signal-api \
-        --restart unless-stopped \
-        -p "$SIGNAL_BIND:8080:8080" \
-        -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
-        -e MODE=native \
-        bbernhard/signal-cli-rest-api:latest
-
-    if ! docker ps | grep -q signal-api; then
-        echo -e "  ${RED}Signal bridge failed to start${NC}"
-        docker logs signal-api 2>&1 | tail -5
-        echo ""
-        echo -e "  You can re-run the installer later to set up Signal."
-    elif wait_for_qrcode 90; then
-        echo ""
-        echo -e "  ${GREEN}✓${NC} Signal bridge ready"
+    # Prepare patched signal-cli for device linking (persisted to $INSTALL_DIR/signal-cli-*)
+    if prepare_link_tool "$INSTALL_DIR"; then
         echo ""
 
-        # --- Device linking ---
-        echo -e "  ${GREEN}Link your phone to nightwire:${NC}"
-        echo ""
-        echo "    1. Open this URL in your browser to see the QR code:"
-        echo ""
-        if [ "$REMOTE_MODE" = true ]; then
-            SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-            [ -z "$SERVER_IP" ] && SERVER_IP=$(ipconfig getifaddr en0 2>/dev/null)
-            [ -z "$SERVER_IP" ] && SERVER_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
-            [ -z "$SERVER_IP" ] && SERVER_IP="<your-server-ip>"
-            echo -e "       ${CYAN}http://${SERVER_IP}:8080/v1/qrcodelink?device_name=nightwire${NC}"
-        else
-            echo -e "       ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=nightwire${NC}"
-        fi
-        echo ""
-        echo "    2. Open Signal on your phone"
-        echo "    3. Settings > Linked Devices > Link New Device"
-        echo "    4. Scan the QR code from your browser"
-        echo ""
-        flush_stdin
-        read -p "  Press Enter after scanning the QR code..."
+        # Stop any existing signal-api container (frees port 8080 and avoids conflicts)
+        docker rm -f signal-api 2>/dev/null || true
 
-        echo ""
-        echo -e "  Verifying link..."
-        sleep 3
-
-        ACCOUNTS=$(curl -s "http://127.0.0.1:8080/v1/accounts" 2>/dev/null)
-        if echo "$ACCOUNTS" | grep -q "+"; then
-            LINKED_NUMBER=$(echo "$ACCOUNTS" | grep -o '+[0-9]*' | head -1)
-            echo -e "  ${GREEN}✓${NC} Device linked: $LINKED_NUMBER"
-
-            if [ "$LINKED_NUMBER" != "$PHONE_NUMBER" ] && [ -n "$LINKED_NUMBER" ]; then
-                sed_inplace "s/$PHONE_NUMBER/$LINKED_NUMBER/" "$SETTINGS_FILE" 2>/dev/null || true
-            fi
+        # Run device linking
+        if run_device_link "$SIGNAL_DATA_DIR" "$REMOTE_MODE"; then
             SIGNAL_PAIRED=true
-        else
-            echo -e "  ${YELLOW}Could not verify link.${NC}"
-            echo -e "  Check: ${CYAN}http://127.0.0.1:8080/v1/accounts${NC}"
-            echo ""
-            echo "  You may need to wait a moment and try scanning again."
-            flush_stdin
-            read -p "  Retry verification? [Y/n] " -n 1 -r
-            echo ""
-            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-                sleep 3
-                ACCOUNTS=$(curl -s "http://127.0.0.1:8080/v1/accounts" 2>/dev/null)
-                if echo "$ACCOUNTS" | grep -q "+"; then
-                    LINKED_NUMBER=$(echo "$ACCOUNTS" | grep -o '+[0-9]*' | head -1)
-                    echo -e "  ${GREEN}✓${NC} Device linked: $LINKED_NUMBER"
-                    if [ "$LINKED_NUMBER" != "$PHONE_NUMBER" ] && [ -n "$LINKED_NUMBER" ]; then
-                        sed_inplace "s/$PHONE_NUMBER/$LINKED_NUMBER/" "$SETTINGS_FILE" 2>/dev/null || true
-                    fi
-                    SIGNAL_PAIRED=true
-                else
-                    echo -e "  ${YELLOW}Still not verified. You can pair later via:${NC}"
-                    echo -e "    ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=nightwire${NC}"
-                fi
+
+            if [ -n "$LINKED_NUMBER" ] && [ "$LINKED_NUMBER" != "$PHONE_NUMBER" ]; then
+                sed_inplace "s/$PHONE_NUMBER/$LINKED_NUMBER/" "$SETTINGS_FILE" 2>/dev/null || true
             fi
         fi
     else
         echo ""
-        echo -e "  ${YELLOW}Signal bridge is taking too long to initialize.${NC}"
-        echo ""
-        echo "  This can happen on first run. Try these troubleshooting steps:"
-        echo "    1. Check container logs: docker logs signal-api"
-        echo "    2. Restart the container: docker restart signal-api"
-        echo "    3. Wait a minute, then open in browser:"
-        echo -e "       ${CYAN}http://127.0.0.1:8080/v1/qrcodelink?device_name=nightwire${NC}"
-        echo ""
-        echo "  The install will continue — you can pair later."
+        echo -e "  ${YELLOW}Could not prepare link tool.${NC}"
+        echo -e "  You can pair later by re-running the installer."
     fi
-
 fi
 
 # -----------------------------------------------------------------------------
@@ -853,20 +1019,55 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
     echo -e "${BLUE}Starting Signal bridge...${NC}"
 
     mkdir -p "$SIGNAL_DATA_DIR"
-    docker rm -f signal-api 2>/dev/null || true
-    sleep 1
 
-    docker run -d \
-        --name signal-api \
-        --restart unless-stopped \
-        -p "127.0.0.1:8080:8080" \
-        -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
-        -e MODE=json-rpc \
-        bbernhard/signal-cli-rest-api:latest
+    # Back up signal data before starting (prevents session loss on container issues)
+    if [ -f "$SIGNAL_DATA_DIR/data/accounts.json" ]; then
+        BACKUP_DIR="$SIGNAL_DATA_DIR.bak.$(date +%Y%m%d_%H%M%S)"
+        cp -a "$SIGNAL_DATA_DIR" "$BACKUP_DIR" 2>/dev/null || true
+        echo -e "  ${GREEN}✓${NC} Signal data backed up"
+    fi
+
+    # Detect Docker Compose command (v2 plugin or v1 standalone)
+    COMPOSE=""
+    if docker compose version &>/dev/null; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose &>/dev/null; then
+        COMPOSE="docker-compose"
+    fi
+
+    if [ -n "$COMPOSE" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+        cd "$INSTALL_DIR"
+        $COMPOSE up -d --force-recreate
+        cd - > /dev/null
+    else
+        # Fallback: direct docker run (when docker compose is unavailable)
+        docker rm -f signal-api 2>/dev/null || true
+        sleep 1
+
+        # Build volume mount args for patched signal-cli if available
+        PATCH_MOUNT_ARGS=""
+        if [ -d "$INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}" ]; then
+            PATCH_MOUNT_ARGS="-v $INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}:/opt/signal-cli-0.13.23 -e JAVA_OPTS=-Djava.library.path=/opt/signal-cli-0.13.23/lib"
+        fi
+
+        docker run -d \
+            --name signal-api \
+            --restart unless-stopped \
+            --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
+            --health-interval 60s \
+            --health-timeout 10s \
+            --health-retries 3 \
+            --health-start-period 30s \
+            -p "127.0.0.1:8080:8080" \
+            -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+            $PATCH_MOUNT_ARGS \
+            -e MODE=json-rpc \
+            bbernhard/signal-cli-rest-api:latest
+    fi
 
     sleep 3
     if docker ps | grep -q signal-api; then
-        echo -e "  ${GREEN}✓${NC} Signal bridge running (json-rpc mode)"
+        echo -e "  ${GREEN}✓${NC} Signal bridge running (json-rpc mode, with health checks)"
     else
         echo -e "  ${YELLOW}Signal bridge did not start. Check: docker logs signal-api${NC}"
     fi
@@ -912,12 +1113,16 @@ Type=simple
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=-$CONFIG_DIR/.env
+ExecStartPre=/bin/bash -c '[ -x $INSTALL_DIR/scripts/apply-signal-patches.sh ] && $INSTALL_DIR/scripts/apply-signal-patches.sh $INSTALL_DIR || true'
+ExecStartPre=/bin/bash -c 'cd $INSTALL_DIR && docker compose up -d 2>/dev/null || docker start signal-api 2>/dev/null || true'
 ExecStart=$VENV_DIR/bin/python3 -m nightwire
 StandardOutput=append:$LOGS_DIR/nightwire.log
 StandardError=append:$LOGS_DIR/nightwire.log
 Restart=on-failure
 RestartSec=10
 RestartForceExitStatus=75
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Install]
 WantedBy=default.target

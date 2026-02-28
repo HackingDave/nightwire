@@ -126,6 +126,13 @@ class AutoUpdater:
                 if pip_result.returncode != 0:
                     raise RuntimeError(f"pip install failed: {pip_result.stderr}")
 
+                # Run post-update hooks (non-fatal — don't rollback on hook failure)
+                try:
+                    await self._run_post_update_hooks()
+                except Exception as e:
+                    logger.warning("post_update_hooks_nonfatal", error=str(e))
+                # Signal container restart is handled by systemd ExecStartPre on next boot
+
                 self.pending_update = False
                 self.pending_sha = None
 
@@ -181,6 +188,42 @@ class AutoUpdater:
                     await self.send_message(self.admin_phone,
                                             f"Update failed and rolled back: {error_msg}")
                 return error_msg
+
+    async def _run_post_update_hooks(self):
+        """Run post-update scripts (e.g., signal-cli patches). Non-fatal on failure."""
+        script = self.repo_dir / "scripts" / "apply-signal-patches.sh"
+        if not script.exists():
+            return
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run, ["bash", str(script), str(self.repo_dir)],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode != 0:
+                logger.warning("post_update_hook_failed", stderr=result.stderr[:500])
+            else:
+                logger.info("post_update_hook_success")
+        except Exception as e:
+            logger.warning("post_update_hook_error", error=str(e))
+
+    async def _restart_signal_container(self):
+        """Restart Signal bridge container to pick up patched signal-cli. Non-fatal."""
+        compose_file = self.repo_dir / "docker-compose.yml"
+        if not compose_file.exists():
+            return
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["docker", "compose", "up", "-d", "--force-recreate"],
+                capture_output=True, text=True, timeout=60,
+                cwd=str(self.repo_dir)
+            )
+            if result.returncode != 0:
+                logger.warning("signal_container_restart_failed", stderr=result.stderr[:500])
+            else:
+                logger.info("signal_container_restarted")
+        except Exception as e:
+            logger.warning("signal_container_restart_error", error=str(e))
 
     async def _rollback(self, previous_head: str):
         """Rollback to a previous commit."""

@@ -340,3 +340,161 @@ class TestAutoUpdater:
         except asyncio.CancelledError:
             pass
         assert call_count >= 2  # Loop survived the first error
+
+    # --- post-update hook tests ---
+
+    @pytest.mark.asyncio
+    async def test_run_post_update_hooks_runs_script(self, tmp_path):
+        """_run_post_update_hooks runs the patch script when present."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script = scripts_dir / "apply-signal-patches.sh"
+        script.write_text("#!/bin/bash\necho patched\n")
+        script.chmod(0o755)
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="patched")
+            await updater._run_post_update_hooks()
+            mock_run.assert_called_once()
+            args = mock_run.call_args
+            assert "apply-signal-patches.sh" in str(args)
+
+    @pytest.mark.asyncio
+    async def test_run_post_update_hooks_noop_when_missing(self, tmp_path):
+        """_run_post_update_hooks does nothing when script doesn't exist."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            await updater._run_post_update_hooks()
+            mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_post_update_hooks_nonfatal_on_failure(self, tmp_path):
+        """_run_post_update_hooks logs warning but doesn't raise on script failure."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script = scripts_dir / "apply-signal-patches.sh"
+        script.write_text("#!/bin/bash\nexit 1\n")
+        script.chmod(0o755)
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr="error", stdout="")
+            # Should not raise
+            await updater._run_post_update_hooks()
+
+    @pytest.mark.asyncio
+    async def test_run_post_update_hooks_nonfatal_on_exception(self, tmp_path):
+        """_run_post_update_hooks handles exceptions gracefully."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script = scripts_dir / "apply-signal-patches.sh"
+        script.write_text("#!/bin/bash\n")
+        script.chmod(0o755)
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(["bash"], 120)
+            # Should not raise
+            await updater._run_post_update_hooks()
+
+    # --- signal container restart tests ---
+
+    @pytest.mark.asyncio
+    async def test_restart_signal_container_calls_compose(self, tmp_path):
+        """_restart_signal_container runs docker compose when compose file exists."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        compose = tmp_path / "docker-compose.yml"
+        compose.write_text("services:\n  signal-api:\n    image: test\n")
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+            await updater._restart_signal_container()
+            mock_run.assert_called_once()
+            args = mock_run.call_args[0][0]
+            assert args == ["docker", "compose", "up", "-d", "--force-recreate"]
+
+    @pytest.mark.asyncio
+    async def test_restart_signal_container_noop_without_compose(self, tmp_path):
+        """_restart_signal_container does nothing without docker-compose.yml."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            await updater._restart_signal_container()
+            mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_restart_signal_container_nonfatal_on_failure(self, tmp_path):
+        """_restart_signal_container logs warning but doesn't raise on failure."""
+        updater = self._make_updater()
+        updater.repo_dir = tmp_path
+
+        compose = tmp_path / "docker-compose.yml"
+        compose.write_text("services:\n  signal-api:\n    image: test\n")
+
+        with patch("nightwire.updater.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr="error", stdout="")
+            # Should not raise
+            await updater._restart_signal_container()
+
+    # --- apply_update calls hooks ---
+
+    @pytest.mark.asyncio
+    async def test_apply_update_calls_hooks_after_pip(self):
+        """apply_update calls post-update hooks after pip install."""
+        send = AsyncMock()
+        updater = self._make_updater(send_message=send)
+        updater.pending_update = True
+        updater.pending_sha = "def5678"
+
+        async def fake_run_git(*args, **kwargs):
+            if "rev-parse" in args:
+                return "abc1234"
+            return ""
+        updater._run_git = fake_run_git
+        updater._run_post_update_hooks = AsyncMock()
+
+        with patch("nightwire.updater.subprocess.run") as mock_run, \
+             patch("nightwire.updater.asyncio.create_task"):
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+            await updater.apply_update()
+
+        updater._run_post_update_hooks.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_apply_update_hook_failure_does_not_rollback(self):
+        """apply_update does not rollback when post-update hooks fail."""
+        send = AsyncMock()
+        updater = self._make_updater(send_message=send)
+        updater.pending_update = True
+        updater.pending_sha = "def5678"
+
+        async def fake_run_git(*args, **kwargs):
+            if "rev-parse" in args:
+                return "abc1234"
+            return ""
+        updater._run_git = fake_run_git
+        updater._rollback = AsyncMock()
+
+        async def failing_hook():
+            raise RuntimeError("hook exploded")
+        updater._run_post_update_hooks = failing_hook
+
+        with patch("nightwire.updater.subprocess.run") as mock_run, \
+             patch("nightwire.updater.asyncio.create_task"):
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+            result = await updater.apply_update()
+
+        assert "Update applied" in result
+        updater._rollback.assert_not_called()

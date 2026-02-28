@@ -16,5 +16,15 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./signal-data:/home/.local/share/signal-cli
+      # Mount patched signal-cli over container's bundled version
+      - ./signal-cli-0.13.24:/opt/signal-cli-0.13.23
     environment:
       - MODE=json-rpc
+      # Point Java to the native library in the mounted signal-cli
+      - JAVA_OPTS=-Djava.library.path=/opt/signal-cli-0.13.23/lib
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/v1/about"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

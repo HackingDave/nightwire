@@ -1,0 +1,59 @@
+signal-cli ACI Binary Patches
+===============================
+
+Signal changed their protocol (Feb 27, 2026) to send ACI/PNI as binary bytes
+instead of strings. This broke signal-cli <= 0.13.24 in two ways:
+
+1. Device linking (provisioning) — GH #1937
+2. Sync message parsing — GH #1938
+
+Patch 1: ProvisioningApi (device linking)
+-----------------------------------------
+Fixes: https://github.com/AsamK/signal-cli/issues/1937
+
+Changes ProvisioningApi.getNewDeviceRegistration() to call the two-argument
+parseOrThrow(String, ByteString) overload which handles both string and binary
+ACI/PNI formats.
+
+Files:
+  ProvisioningApi.java                           - Patched source
+  ProvisioningApi.class                          - Compiled (signal-cli 0.13.24)
+  ProvisioningApi$NewDeviceRegistrationReturn.class - Inner class
+
+Target JAR: lib/signal-service-java-2.15.3_unofficial_*.jar
+Package:    org/whispersystems/signalservice/api/registration/
+
+Compiled with: OpenJDK 21, against signal-cli 0.13.24 classpath.
+Compatible with libsignal-client 0.87.0.
+
+Patch 2: Turasa JAR upgrade (sync message parsing)
+---------------------------------------------------
+Fixes: https://github.com/AsamK/signal-cli/issues/1938
+
+Upgrades three Turasa library JARs from _unofficial_137 to _unofficial_138:
+  - signal-service-java-2.15.3_unofficial_138.jar
+  - models-jvm-2.15.3_unofficial_138.jar
+  - util-jvm-2.15.3_unofficial_138.jar
+
+The _138 build includes SignalServiceContent.kt changes that parse
+destinationServiceIdBinary (binary) in addition to destinationServiceId (string).
+
+Application
+-----------
+Both patches are applied automatically by scripts/apply-signal-patches.sh, which
+is called by:
+  - install.sh (fresh installs)
+  - nightwire/updater.py (git pull updates)
+
+The patched signal-cli directory is mounted into the Docker container via
+docker-compose.yml (./signal-cli-0.13.24:/opt/signal-cli-0.13.23).
+
+Removal
+-------
+REMOVE BOTH PATCHES when signal-cli releases a version > 0.13.24 with the fixes.
+
+To remove:
+1. Set PATCH_REQUIRED=false in scripts/apply-signal-patches.sh
+2. Remove the volume mount and JAVA_OPTS from docker-compose.yml
+3. Run the patch script once (cleans up the signal-cli directory)
+4. Delete this patches/signal-cli/ directory
