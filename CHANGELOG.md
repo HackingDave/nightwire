@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auto-detect SSH sessions for remote QR code scanning
 
 ### Fixed
+- Crash bug in websocket timeout handler: `str(data).get()` called `.get()` on a string instead of the dict, causing `AttributeError` on message timeouts
+- Startup log now reads version from `__init__.py` instead of hardcoded `"1.5.0"`
 - Version mismatch: `__init__.py`, `pyproject.toml`, and installer banner now report correct version (was stuck at 1.5.0, should be 2.4.x)
 - `autonomous.max_parallel` config setting was silently ignored — now correctly wired to AutonomousLoop
 - Installer used `pip install -r requirements.txt` instead of `pip install -e .`, causing missing dependencies (`anthropic`, `psutil`)

@@ -1175,7 +1175,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                                 logger.error(
                                     "message_handling_timeout",
                                     timeout=MESSAGE_HANDLING_TIMEOUT,
-                                    msg=str(data).get("envelope", {}).get("source", "unknown")[:20]
+                                    msg=data.get("envelope", {}).get("source", "unknown")[:20]
                                     if isinstance(data, dict) else "unknown",
                                 )
                             except json.JSONDecodeError:
