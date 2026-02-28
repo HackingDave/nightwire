@@ -342,6 +342,8 @@ SKIP_SIGNAL=false
 SKIP_SYSTEMD=false
 UNINSTALL=false
 RESTART=false
+QUICK_MODE=false
+PHONE_NUMBER_ARG=""
 
 # Parse arguments
 for arg in "$@"; do
@@ -362,15 +364,27 @@ for arg in "$@"; do
             RESTART=true
             shift
             ;;
+        --quick)
+            QUICK_MODE=true
+            shift
+            ;;
+        --phone=*)
+            PHONE_NUMBER_ARG="${arg#*=}"
+            shift
+            ;;
         --help|-h)
             echo "Usage: ./install.sh [options]"
             echo ""
             echo "Options:"
+            echo "  --quick          Minimal prompts — uses smart defaults"
+            echo "  --phone=NUMBER   Set phone number (e.g., --phone=+15551234567)"
             echo "  --skip-signal    Skip Signal pairing (configure later)"
             echo "  --skip-systemd   Skip service installation"
             echo "  --uninstall      Remove nightwire service and containers"
             echo "  --restart        Restart the nightwire service"
             echo "  --help, -h       Show this help message"
+            echo ""
+            echo "Quick install: ./install.sh --quick --phone=+15551234567"
             exit 0
             ;;
     esac
@@ -511,7 +525,7 @@ if [ "$RESTART" = true ]; then
 fi
 
 # Banner
-VERSION="1.5.0"
+VERSION="2.4.1"
 echo -e "${CYAN}"
 cat << 'EOF'
        _       _     _            _
@@ -556,10 +570,14 @@ else
     echo -e "  ${YELLOW}!${NC} Claude CLI not found"
     echo -e "    nightwire requires Claude CLI for code commands (/ask, /do, /complex)."
     echo -e "    Install: ${CYAN}https://docs.anthropic.com/en/docs/claude-code${NC}"
-    read -p "    Continue anyway? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    if [ "$QUICK_MODE" = true ]; then
+        echo -e "    ${BLUE}(--quick: continuing without Claude CLI)${NC}"
+    else
+        read -p "    Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
     fi
 fi
 
@@ -590,6 +608,12 @@ elif command -v docker &> /dev/null; then
         DOCKER_OK=true
     else
         echo -e "  ${YELLOW}!${NC} Docker installed but not running"
+        if [ "$QUICK_MODE" = true ]; then
+            echo -e "    ${BLUE}(--quick: skipping Signal setup — start Docker and re-run)${NC}"
+            SKIP_SIGNAL=true
+            DOCKER_OK=true
+        fi
+        if [ "$DOCKER_OK" = false ]; then
         echo ""
         if [ "$(uname)" = "Darwin" ]; then
             echo -e "    Start Docker Desktop: ${CYAN}open -a Docker${NC}"
@@ -627,6 +651,7 @@ elif command -v docker &> /dev/null; then
                 DOCKER_OK=true
             fi
         fi
+        fi # end DOCKER_OK=false check
     fi
 else
     echo -e "  ${YELLOW}!${NC} Docker not found"
@@ -676,16 +701,22 @@ else
     fi
 
     if [ "$DOCKER_OK" = false ]; then
-        echo ""
-        read -p "    Skip Signal setup and continue? [y/N] " -n 1 -r
-        echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [ "$QUICK_MODE" = true ]; then
+            echo -e "    ${BLUE}(--quick: skipping Signal setup — install Docker and re-run)${NC}"
             SKIP_SIGNAL=true
             DOCKER_OK=true
         else
             echo ""
-            echo "  Install Docker, then re-run this installer."
-            exit 1
+            read -p "    Skip Signal setup and continue? [y/N] " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                SKIP_SIGNAL=true
+                DOCKER_OK=true
+            else
+                echo ""
+                echo "  Install Docker, then re-run this installer."
+                exit 1
+            fi
         fi
     fi
 fi
@@ -711,7 +742,6 @@ mkdir -p "$SIGNAL_DATA_DIR"
 # Copy config templates if not already present
 if [ -d "$INSTALL_DIR/config" ]; then
     cp -n "$INSTALL_DIR/config/"*.example "$CONFIG_DIR/" 2>/dev/null || true
-    cp -n "$INSTALL_DIR/config/CLAUDE.md" "$CONFIG_DIR/" 2>/dev/null || true
 fi
 
 echo -e "  ${GREEN}✓${NC} Ready ($INSTALL_DIR)"
@@ -732,7 +762,7 @@ if "$VENV_DIR/bin/pip" freeze 2>/dev/null | grep -q aiohttp; then
     echo -e "  ${GREEN}✓${NC} Dependencies already installed"
 else
     pip install --upgrade pip -q
-    pip install -r "$INSTALL_DIR/requirements.txt" -q
+    pip install -e "$INSTALL_DIR" -q
     echo -e "  ${GREEN}✓${NC} Dependencies installed"
 fi
 
@@ -777,18 +807,27 @@ YAML
     fi
 fi
 
-# Get phone number
-echo -e "  Enter your phone number (e.g., +15551234567):"
-read -p "  > " PHONE_NUMBER
+# Get phone number (accept from --phone flag or prompt)
+if [ -n "$PHONE_NUMBER_ARG" ]; then
+    PHONE_NUMBER="$PHONE_NUMBER_ARG"
+    echo -e "  Phone number: ${GREEN}$PHONE_NUMBER${NC}"
+else
+    echo -e "  Enter your phone number (e.g., +15551234567):"
+    read -p "  > " PHONE_NUMBER
+fi
 
 if [ -n "$PHONE_NUMBER" ]; then
     if [[ ! "$PHONE_NUMBER" =~ ^\+[1-9][0-9]{6,14}$ ]]; then
         echo -e "  ${YELLOW}Warning: doesn't look like E.164 format (e.g., +15551234567)${NC}"
-        read -p "  Continue anyway? [y/N] " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "  Please re-run the installer with a valid phone number."
-            exit 1
+        if [ "$QUICK_MODE" = true ]; then
+            echo -e "  ${BLUE}(--quick: using phone number as-is)${NC}"
+        else
+            read -p "  Continue anyway? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "  Please re-run the installer with a valid phone number."
+                exit 1
+            fi
         fi
     fi
     sed_inplace "s/+1XXXXXXXXXX/$PHONE_NUMBER/" "$SETTINGS_FILE"
@@ -810,13 +849,18 @@ EOF
 fi
 
 # Optional AI assistant (not required — Claude handles all code tasks)
-echo ""
-echo -e "  ${BLUE}Optional:${NC} nightwire can use OpenAI or Grok as a lightweight"
-echo "  assistant for general knowledge questions (\"nightwire: what is X?\")."
-echo "  This is NOT required — Claude handles all code commands (/ask, /do, /complex)."
-echo ""
-read -p "  Enable optional AI assistant? [y/N] " -n 1 -r
-echo ""
+if [ "$QUICK_MODE" = true ]; then
+    echo -e "  ${BLUE}(--quick: skipping optional AI assistant — enable later in settings.yaml)${NC}"
+    REPLY="n"
+else
+    echo ""
+    echo -e "  ${BLUE}Optional:${NC} nightwire can use OpenAI or Grok as a lightweight"
+    echo "  assistant for general knowledge questions (\"nightwire: what is X?\")."
+    echo "  This is NOT required — Claude handles all code commands (/ask, /do, /complex)."
+    echo ""
+    read -p "  Enable optional AI assistant? [y/N] " -n 1 -r
+    echo ""
+fi
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     sed_inplace "s/enabled: false/enabled: true/" "$SETTINGS_FILE"
     echo ""
@@ -860,13 +904,18 @@ fi
 # -----------------------------------------------------------------------------
 # Projects directory
 # -----------------------------------------------------------------------------
-echo ""
-echo -e "  ${BLUE}Projects directory:${NC} Where your code projects live."
-echo "  Claude will be able to work on any project registered from this folder."
-echo ""
 DEFAULT_PROJECTS="$HOME/projects"
-read -p "  Projects path [$DEFAULT_PROJECTS]: " PROJECTS_PATH
-PROJECTS_PATH="${PROJECTS_PATH:-$DEFAULT_PROJECTS}"
+if [ "$QUICK_MODE" = true ]; then
+    PROJECTS_PATH="$DEFAULT_PROJECTS"
+    echo -e "  ${BLUE}(--quick: using default projects path: $PROJECTS_PATH)${NC}"
+else
+    echo ""
+    echo -e "  ${BLUE}Projects directory:${NC} Where your code projects live."
+    echo "  Claude will be able to work on any project registered from this folder."
+    echo ""
+    read -p "  Projects path [$DEFAULT_PROJECTS]: " PROJECTS_PATH
+    PROJECTS_PATH="${PROJECTS_PATH:-$DEFAULT_PROJECTS}"
+fi
 
 # Expand ~ if used
 PROJECTS_PATH="${PROJECTS_PATH/#\~/$HOME}"
@@ -895,9 +944,14 @@ if [ -d "$PROJECTS_PATH" ]; then
         for d in "${SUBDIRS[@]}"; do
             echo "    - $d"
         done
-        echo ""
-        read -p "  Auto-register all as projects? [Y/n] " -n 1 -r
-        echo ""
+        if [ "$QUICK_MODE" = true ]; then
+            REPLY="y"
+            echo -e "  ${BLUE}(--quick: auto-registering ${#SUBDIRS[@]} project(s))${NC}"
+        else
+            echo ""
+            read -p "  Auto-register all as projects? [Y/n] " -n 1 -r
+            echo ""
+        fi
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             # Create projects.yaml with all subdirectories
             PROJECTS_FILE="$CONFIG_DIR/projects.yaml"
@@ -923,12 +977,17 @@ fi
 # Docker Sandbox (optional)
 # -----------------------------------------------------------------------------
 if [ "$DOCKER_OK" = true ]; then
-    echo ""
-    echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs Claude CLI inside a container"
-    echo "  for additional security isolation. Requires building a Docker image (~400MB)."
-    echo ""
-    read -p "  Enable Docker sandbox? [y/N] " -n 1 -r
-    echo ""
+    if [ "$QUICK_MODE" = true ]; then
+        echo -e "  ${BLUE}(--quick: skipping Docker sandbox — enable later in settings.yaml)${NC}"
+        REPLY="n"
+    else
+        echo ""
+        echo -e "  ${BLUE}Optional:${NC} Docker sandbox runs Claude CLI inside a container"
+        echo "  for additional security isolation. Requires building a Docker image (~400MB)."
+        echo ""
+        read -p "  Enable Docker sandbox? [y/N] " -n 1 -r
+        echo ""
+    fi
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "  Building sandbox image (this may take a few minutes)..."
         BUILD_LOG=$(mktemp)
@@ -978,14 +1037,18 @@ if [ "$SKIP_SIGNAL" = false ]; then
     REMOTE_MODE=false
     if [ -n "$SSH_CONNECTION" ]; then
         echo -e "  ${YELLOW}Remote session detected.${NC}"
-        echo ""
-    fi
-    read -p "  Will you scan the QR code from another device (e.g., SSH'd in)? [y/N] " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
         REMOTE_MODE=true
         echo -e "  QR code will be served on port 9090 for remote scanning."
-        echo -e "  After pairing, the port is ${GREEN}automatically closed${NC}."
+    elif [ "$QUICK_MODE" = true ]; then
+        echo -e "  ${BLUE}(--quick: QR code will display in terminal)${NC}"
+    else
+        read -p "  Will you scan the QR code from another device (e.g., SSH'd in)? [y/N] " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            REMOTE_MODE=true
+            echo -e "  QR code will be served on port 9090 for remote scanning."
+            echo -e "  After pairing, the port is ${GREEN}automatically closed${NC}."
+        fi
         echo ""
     fi
 
@@ -1096,8 +1159,13 @@ if [ "$SKIP_SYSTEMD" = false ]; then
 
     if [ "$(uname)" = "Linux" ] && command -v systemctl &> /dev/null; then
         # --- Linux: systemd service ---
-        read -p "Start nightwire as a service (auto-starts on boot)? [Y/n] " -n 1 -r
-        echo ""
+        if [ "$QUICK_MODE" = true ]; then
+            REPLY="y"
+            echo -e "  ${BLUE}(--quick: installing systemd service)${NC}"
+        else
+            read -p "Start nightwire as a service (auto-starts on boot)? [Y/n] " -n 1 -r
+            echo ""
+        fi
 
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             SERVICE_FILE="$HOME/.config/systemd/user/nightwire.service"
@@ -1149,8 +1217,13 @@ EOF
 
     elif [ "$(uname)" = "Darwin" ]; then
         # --- macOS: launchd plist ---
-        read -p "Start nightwire as a service (auto-starts on login)? [Y/n] " -n 1 -r
-        echo ""
+        if [ "$QUICK_MODE" = true ]; then
+            REPLY="y"
+            echo -e "  ${BLUE}(--quick: installing launchd service)${NC}"
+        else
+            read -p "Start nightwire as a service (auto-starts on login)? [Y/n] " -n 1 -r
+            echo ""
+        fi
 
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             PLIST_DIR="$HOME/Library/LaunchAgents"

@@ -35,6 +35,7 @@ class AutonomousManager:
         progress_callback: Optional[Callable[[str, str], Awaitable[None]]] = None,
         poll_interval: int = 30,
         run_quality_gates: bool = True,
+        max_parallel: int = 3,
     ):
         """
         Initialize the autonomous manager.
@@ -44,6 +45,7 @@ class AutonomousManager:
             progress_callback: Async callback(phone_number, message) for notifications
             poll_interval: Seconds between queue polls
             run_quality_gates: Whether to run tests/typecheck after tasks
+            max_parallel: Max concurrent task workers
         """
         self.db = AutonomousDatabase(db_connection)
         self.quality_runner = QualityGateRunner()
@@ -59,6 +61,7 @@ class AutonomousManager:
             executor=self.executor,
             progress_callback=progress_callback,
             poll_interval=poll_interval,
+            max_parallel=max_parallel,
         )
 
         self._progress_callback = progress_callback

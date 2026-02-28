@@ -408,46 +408,6 @@ class TestAutoUpdater:
 
     # --- signal container restart tests ---
 
-    @pytest.mark.asyncio
-    async def test_restart_signal_container_calls_compose(self, tmp_path):
-        """_restart_signal_container runs docker compose when compose file exists."""
-        updater = self._make_updater()
-        updater.repo_dir = tmp_path
-
-        compose = tmp_path / "docker-compose.yml"
-        compose.write_text("services:\n  signal-api:\n    image: test\n")
-
-        with patch("nightwire.updater.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
-            await updater._restart_signal_container()
-            mock_run.assert_called_once()
-            args = mock_run.call_args[0][0]
-            assert args == ["docker", "compose", "up", "-d", "--force-recreate"]
-
-    @pytest.mark.asyncio
-    async def test_restart_signal_container_noop_without_compose(self, tmp_path):
-        """_restart_signal_container does nothing without docker-compose.yml."""
-        updater = self._make_updater()
-        updater.repo_dir = tmp_path
-
-        with patch("nightwire.updater.subprocess.run") as mock_run:
-            await updater._restart_signal_container()
-            mock_run.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_restart_signal_container_nonfatal_on_failure(self, tmp_path):
-        """_restart_signal_container logs warning but doesn't raise on failure."""
-        updater = self._make_updater()
-        updater.repo_dir = tmp_path
-
-        compose = tmp_path / "docker-compose.yml"
-        compose.write_text("services:\n  signal-api:\n    image: test\n")
-
-        with patch("nightwire.updater.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stderr="error", stdout="")
-            # Should not raise
-            await updater._restart_signal_container()
-
     # --- apply_update calls hooks ---
 
     @pytest.mark.asyncio

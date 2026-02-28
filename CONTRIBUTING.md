@@ -28,7 +28,6 @@ nightwire/
 ├── exceptions.py       # Structured exception hierarchy
 ├── attachments.py      # Image download and processing
 ├── prd_builder.py      # Robust JSON parsing for autonomous PRDs
-├── skill_registry.py   # Claude plugin discovery and matching
 ├── autonomous/
 │   ├── loop.py         # Parallel task dispatch with dependency resolution
 │   ├── executor.py     # Task execution with git safety and verification

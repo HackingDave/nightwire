@@ -25,7 +25,7 @@ class HaikuSummarizer:
     def __init__(
         self,
         claude_path: str = None,
-        model: str = "claude-3-haiku-20240307",
+        model: str = "claude-haiku-4-5-20251001",
         timeout: int = 30
     ):
         """Initialize the summarizer.

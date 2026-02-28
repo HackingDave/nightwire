@@ -5,6 +5,27 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-02-28
+
+### Added
+- `--quick` installer flag for minimal-prompt installation with smart defaults
+- `--phone=NUMBER` installer flag to set phone number non-interactively
+- Quick install: `./install.sh --quick --phone=+15551234567` skips all optional prompts
+- Auto-detect SSH sessions for remote QR code scanning
+
+### Fixed
+- Version mismatch: `__init__.py`, `pyproject.toml`, and installer banner now report correct version (was stuck at 1.5.0, should be 2.4.x)
+- `autonomous.max_parallel` config setting was silently ignored — now correctly wired to AutonomousLoop
+- Installer used `pip install -r requirements.txt` instead of `pip install -e .`, causing missing dependencies (`anthropic`, `psutil`)
+- Added `sqlite-vec` to `pyproject.toml` dependencies (was only in `requirements.txt`, not installed by `pip install -e .`)
+- Renamed vestigial `ask_jarvis()` method to `ask_nightwire()` for consistency
+- Removed installer copy of non-existent `config/CLAUDE.md` file
+- Updated `haiku_summarizer` default model from deprecated `claude-3-haiku-20240307` to `claude-haiku-4-5-20251001`
+
+### Removed
+- Dead `skill_registry.py` module — was never imported or called by any code
+- Dead `_restart_signal_container()` method from updater — was defined but never called
+
 ## [2.4.0] - 2026-02-27
 
 ### Fixed

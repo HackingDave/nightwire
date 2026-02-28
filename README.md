@@ -91,13 +91,21 @@ cd nightwire
 
 The installer walks you through everything: Python venv setup, phone number, Signal pairing (scan a QR code), and starting the service. No manual setup needed.
 
+For a minimal-prompt install, use `--quick` with your phone number:
+
+```bash
+./install.sh --quick --phone=+15551234567
+```
+
 The installer supports flags for advanced usage:
 
 ```bash
-./install.sh --skip-signal    # Skip Signal pairing setup
-./install.sh --skip-systemd   # Skip service installation
-./install.sh --restart        # Restart the nightwire service
-./install.sh --uninstall      # Remove nightwire service and containers
+./install.sh --quick              # Minimal prompts, smart defaults
+./install.sh --phone=+1555...     # Set phone number non-interactively
+./install.sh --skip-signal        # Skip Signal pairing setup
+./install.sh --skip-systemd       # Skip service installation
+./install.sh --restart            # Restart the nightwire service
+./install.sh --uninstall          # Remove nightwire service and containers
 ```
 
 ## Requirements

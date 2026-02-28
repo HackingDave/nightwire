@@ -132,6 +132,7 @@ class SignalBot:
             progress_callback=autonomous_notify,
             poll_interval=self.config.autonomous_poll_interval,
             run_quality_gates=self.config.autonomous_quality_gates,
+            max_parallel=self.config.autonomous_max_parallel,
         )
         self.autonomous_commands = AutonomousCommands(
             manager=self.autonomous_manager,
@@ -1107,7 +1108,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             return "nightwire assistant is not enabled. Set nightwire_assistant.enabled: true in settings.yaml and provide OPENAI_API_KEY or GROK_API_KEY."
         try:
             logger.info("nightwire_query", length=len(message))
-            success, response = await self.nightwire_runner.ask_jarvis(message)
+            success, response = await self.nightwire_runner.ask_nightwire(message)
             if not response or not response.strip():
                 logger.warning("nightwire_empty_response")
                 return "The assistant returned an empty response. Please try again."

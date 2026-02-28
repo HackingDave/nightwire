@@ -54,7 +54,7 @@ class NightwireRunner:
             await self._session.close()
             self._session = None
 
-    async def ask_jarvis(
+    async def ask_nightwire(
         self,
         message: str,
         timeout: int = 60,
