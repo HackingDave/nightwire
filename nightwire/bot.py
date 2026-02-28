@@ -288,8 +288,45 @@ class SignalBot:
                 logger.error("accounts_request_error", error=str(e))
                 return
 
+    def _split_message(self, message: str, max_length: int = 5000) -> list:
+        """Split a long message into chunks that fit within Signal's limits.
+
+        Splits at paragraph boundaries first, then line boundaries, then
+        hard-splits at max_length as a last resort.
+        """
+        if len(message) <= max_length:
+            return [message]
+
+        parts = []
+        remaining = message
+
+        while remaining:
+            if len(remaining) <= max_length:
+                parts.append(remaining)
+                break
+
+            # Try to split at a paragraph boundary (double newline)
+            split_pos = remaining.rfind("\n\n", 0, max_length)
+            if split_pos > max_length // 2:
+                parts.append(remaining[:split_pos])
+                remaining = remaining[split_pos + 2:]
+                continue
+
+            # Try to split at a single newline
+            split_pos = remaining.rfind("\n", 0, max_length)
+            if split_pos > max_length // 2:
+                parts.append(remaining[:split_pos])
+                remaining = remaining[split_pos + 1:]
+                continue
+
+            # Hard split at max_length
+            parts.append(remaining[:max_length])
+            remaining = remaining[max_length:]
+
+        return parts
+
     async def _send_message(self, recipient: str, message: str):
-        """Send a message via Signal."""
+        """Send a message via Signal, splitting long messages into parts."""
         if not self.account:
             logger.error("no_account_for_sending")
             return
@@ -302,20 +339,35 @@ class SignalBot:
         # Add nightwire identifier to all messages
         message = f"[nightwire] {message}"
 
+        # Split long messages into multiple parts
+        parts = self._split_message(message)
+
         try:
             url = f"{self.config.signal_api_url}/v2/send"
-            payload = {
-                "number": self.account,
-                "recipients": [recipient],
-                "message": message
-            }
 
-            async with self.session.post(url, json=payload) as resp:
-                if resp.status == 201:
-                    logger.info("message_sent", recipient="..." + recipient[-4:])
-                else:
-                    text = await resp.text()
-                    logger.error("send_failed", status=resp.status, response=text)
+            for i, part in enumerate(parts):
+                # Add part indicator for multi-part messages
+                if len(parts) > 1:
+                    part = f"[{i + 1}/{len(parts)}] {part}" if i > 0 else part
+
+                payload = {
+                    "number": self.account,
+                    "recipients": [recipient],
+                    "message": part
+                }
+
+                async with self.session.post(url, json=payload) as resp:
+                    if resp.status == 201:
+                        logger.info(
+                            "message_sent",
+                            recipient="..." + recipient[-4:],
+                            part=i + 1,
+                            total_parts=len(parts),
+                        )
+                    else:
+                        text = await resp.text()
+                        logger.error("send_failed", status=resp.status, response=text)
+                        break
 
         except Exception as e:
             logger.error("send_error", error=str(e))

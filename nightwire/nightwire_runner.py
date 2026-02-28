@@ -109,7 +109,7 @@ When responding:
 Response Style:
 - Clear and organized
 - Use bullet points for lists
-- Keep responses under 4000 characters
+- Be thorough but concise
 - No emojis unless specifically requested"""
 
         payload = {
@@ -146,10 +146,6 @@ Response Style:
                         logger.warning("nightwire_empty_response")
                         return False, "The AI provider returned an empty response. Please try again."
                     logger.info("nightwire_response_success", length=len(response))
-
-                    # Truncate if too long for Signal
-                    if len(response) > 4000:
-                        response = response[:4000] + "\n\n[Response truncated...]"
 
                     return True, response
                 else:

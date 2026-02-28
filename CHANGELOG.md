@@ -5,6 +5,13 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2026-02-28
+
+### Fixed
+- Long Claude and nightwire responses were truncated at 4000 characters — now sends the full response split across multiple Signal messages
+- Messages split intelligently at paragraph and line boundaries for readability
+- Multi-part messages include part indicators (e.g., [2/3]) for continuity
+
 ## [2.5.1] - 2026-02-28
 
 ### Fixed

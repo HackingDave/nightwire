@@ -385,10 +385,6 @@ class ClaudeRunner:
 
             result = output if output else errors
 
-            max_response = 4000
-            if len(result) > max_response:
-                result = result[:max_response] + "\n\n[Response truncated...]"
-
             return True, result, ErrorCategory.PERMANENT
 
         except FileNotFoundError:
