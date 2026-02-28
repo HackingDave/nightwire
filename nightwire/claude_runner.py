@@ -82,7 +82,7 @@ class ClaudeRunner:
     def __init__(self):
         self.config = get_config()
         self.current_project: Optional[Path] = None
-        self._running_process: Optional[asyncio.subprocess.Process] = None
+        self._active_processes: set[asyncio.subprocess.Process] = set()
         self._guidelines: str = self._load_guidelines()
 
     def _load_guidelines(self) -> str:
@@ -171,6 +171,7 @@ class ClaudeRunner:
             "--dangerously-skip-permissions",
             "--verbose",
             "--max-turns", str(self.config.claude_max_turns),
+            "--settings", '{"sandbox": {"enabled": false}}',
         ]
 
         logger.info(
@@ -308,7 +309,7 @@ class ClaudeRunner:
                 )
                 cmd = build_sandbox_command(list(cmd), effective_cwd, sandbox_cfg)
 
-            self._running_process = await asyncio.create_subprocess_exec(
+            proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(effective_cwd),
                 stdin=asyncio.subprocess.PIPE,
@@ -316,21 +317,20 @@ class ClaudeRunner:
                 stderr=asyncio.subprocess.PIPE,
                 env=_subprocess_env
             )
+            self._active_processes.add(proc)
 
             if progress_callback:
                 progress_task = asyncio.create_task(send_progress_updates())
 
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    self._running_process.communicate(
-                        input=prompt.encode("utf-8")
-                    ),
+                    proc.communicate(input=prompt.encode("utf-8")),
                     timeout=timeout
                 )
             except asyncio.TimeoutError:
-                self._running_process.kill()
-                await self._running_process.wait()
-                self._running_process = None
+                proc.kill()
+                await proc.wait()
+                self._active_processes.discard(proc)
                 elapsed = int(asyncio.get_running_loop().time() - start_time)
                 elapsed_min = elapsed // 60
                 logger.warning("claude_timeout", timeout=timeout, elapsed=elapsed)
@@ -347,12 +347,13 @@ class ClaudeRunner:
                     except asyncio.CancelledError:
                         pass
 
-            if self._running_process is None:
+            self._active_processes.discard(proc)
+
+            if proc.returncode is None:
                 # Process was cancelled externally (e.g. shutdown)
                 return False, "Claude process was cancelled.", ErrorCategory.INFRASTRUCTURE
 
-            return_code = self._running_process.returncode
-            self._running_process = None
+            return_code = proc.returncode
 
             output = stdout.decode("utf-8", errors="replace")
             errors = stderr.decode("utf-8", errors="replace")
@@ -400,13 +401,17 @@ class ClaudeRunner:
             return False, f"Error running Claude: {str(e)}", ErrorCategory.INFRASTRUCTURE
 
     async def cancel(self):
-        """Cancel any running Claude process."""
-        proc = self._running_process
-        self._running_process = None
-        if proc:
-            proc.kill()
-            await proc.wait()
-            logger.info("claude_cancelled")
+        """Cancel all running Claude processes."""
+        procs = list(self._active_processes)
+        self._active_processes.clear()
+        for proc in procs:
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+        if procs:
+            logger.info("claude_cancelled", count=len(procs))
 
 
 # Global runner instance

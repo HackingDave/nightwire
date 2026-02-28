@@ -785,6 +785,23 @@ AI Assistant:
                     project_path=task_project_path,
                 )
 
+                # Handle empty or failed responses
+                if not success:
+                    logger.error("claude_task_failed", response=response[:200])
+                    await self._send_message(
+                        sender,
+                        f"[{project_name}] Task failed: {response}" if response.strip() else f"[{project_name}] Task failed. Please try again.",
+                    )
+                    return
+
+                if not response or not response.strip():
+                    logger.warning("claude_empty_response", output_length=len(response) if response else 0)
+                    await self._send_message(
+                        sender,
+                        f"[{project_name}] Claude returned an empty response. This can happen with URLs or content it can't process. Please try rephrasing your request.",
+                    )
+                    return
+
                 # Store response to memory
                 t = asyncio.create_task(
                     self.memory.store_message(
