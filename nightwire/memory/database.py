@@ -64,11 +64,15 @@ class DatabaseConnection:
 
         # Check for sqlite-vec extension
         try:
+            import sqlite_vec
             self._conn.enable_load_extension(True)
-            self._conn.load_extension("vec0")
+            sqlite_vec.load(self._conn)
             self._conn.enable_load_extension(False)
             self._has_vec = True
             logger.info("sqlite_vec_loaded")
+        except ImportError:
+            logger.warning("sqlite_vec_not_available", error="sqlite-vec package not installed (pip install sqlite-vec)")
+            self._has_vec = False
         except Exception as e:
             logger.warning("sqlite_vec_not_available", error=str(e))
             self._has_vec = False

@@ -766,6 +766,29 @@ else
     echo -e "  ${GREEN}✓${NC} Dependencies installed"
 fi
 
+# Fix sqlite-vec on aarch64 — pip wheel v0.1.6 ships a 32-bit ARM binary
+# for the "aarch64" platform. Replace it with the proper 64-bit build.
+ARCH=$(uname -m)
+if [ "$ARCH" = "aarch64" ]; then
+    VEC_SO=$(python -c "import sqlite_vec; print(sqlite_vec.loadable_path())" 2>/dev/null)
+    if [ -n "$VEC_SO" ] && file "${VEC_SO}.so" 2>/dev/null | grep -q "32-bit"; then
+        echo -e "  ${YELLOW}⚠${NC}  sqlite-vec pip wheel has wrong architecture, fixing..."
+        VEC_URL="https://github.com/asg017/sqlite-vec/releases/download/v0.1.7-alpha.10/sqlite-vec-0.1.7-alpha.10-loadable-linux-aarch64.tar.gz"
+        TMPDIR=$(mktemp -d)
+        if curl -sL "$VEC_URL" | tar xz -C "$TMPDIR" 2>/dev/null; then
+            if file "$TMPDIR/vec0.so" | grep -q "64-bit"; then
+                cp "$TMPDIR/vec0.so" "${VEC_SO}.so"
+                echo -e "  ${GREEN}✓${NC} sqlite-vec aarch64 binary fixed"
+            else
+                echo -e "  ${YELLOW}⚠${NC}  Downloaded binary still not 64-bit, skipping"
+            fi
+        else
+            echo -e "  ${YELLOW}⚠${NC}  Could not download sqlite-vec fix (vector search will use fallback)"
+        fi
+        rm -rf "$TMPDIR"
+    fi
+fi
+
 # -----------------------------------------------------------------------------
 # Interactive configuration
 # -----------------------------------------------------------------------------

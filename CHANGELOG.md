@@ -5,6 +5,13 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.3] - 2026-02-28
+
+### Fixed
+- sqlite-vec extension loading failed on aarch64/ARM64 systems — pip wheel v0.1.6 ships a 32-bit binary for the "aarch64" platform
+- Extension loading now uses `sqlite_vec.load()` API instead of raw `load_extension("vec0")` for reliable cross-platform loading
+- Installer automatically detects and replaces broken 32-bit vec0.so with proper 64-bit build on aarch64
+
 ## [2.5.2] - 2026-02-28
 
 ### Fixed
