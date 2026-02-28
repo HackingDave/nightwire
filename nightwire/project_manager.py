@@ -44,6 +44,10 @@ class ProjectManager:
         entry = self._current_projects.get(phone_number)
         return entry[1] if entry else None
 
+    def get_project_path(self, project_name: str) -> Optional[Path]:
+        """Get the path for a project by name (case-insensitive)."""
+        return self.config.get_project_path(project_name)
+
     def list_projects(self, phone_number: Optional[str] = None) -> str:
         """List registered projects visible to this phone number."""
         all_projects = self.config.get_project_list()

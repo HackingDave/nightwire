@@ -5,6 +5,17 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2] - 2026-02-28
+
+### Fixed
+- Concurrent `/do` commands across different projects now work — task tracking changed from per-sender to per-(sender, project) so the same user can run tasks on different projects simultaneously
+- `/cancel` now cancels the task on the currently selected project; shows active tasks on other projects if none running on current
+- `/status` now shows all active tasks with project labels
+- Task responses, progress messages, and errors now prefixed with `[project_name]` for clarity when running concurrent tasks
+
+### Added
+- `ProjectManager.get_project_path()` method for looking up project paths by name
+
 ## [2.4.1] - 2026-02-28
 
 ### Added

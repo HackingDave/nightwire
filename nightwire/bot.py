@@ -71,9 +71,10 @@ class SignalBot:
         self._last_ws_activity = 0.0  # monotonic timestamp of last websocket activity
         self._watchdog_task: Optional[asyncio.Task] = None
 
-        # Per-sender task state tracking - allows concurrent tasks across users
-        # Key: sender phone number, Value: dict with task, description, start, step
-        self._sender_tasks: Dict[str, dict] = {}
+        # Per-(sender, project) task state tracking - allows concurrent tasks
+        # across users AND across different projects for the same user.
+        # Key: (sender_phone, project_name), Value: dict with task, description, start, step
+        self._sender_tasks: Dict[tuple, dict] = {}
 
         # Memory system
         memory_db_path = Path(self.config.config_dir).parent / "data" / "memory.db"
@@ -217,7 +218,7 @@ class SignalBot:
         # can still send final messages if needed
         await self.runner.cancel()
         # Cancel any running background tasks and wait for them to finish
-        for sender, state in list(self._sender_tasks.items()):
+        for key, state in list(self._sender_tasks.items()):
             task = state.get("task")
             if task and not task.done():
                 task.cancel()
@@ -340,14 +341,17 @@ class SignalBot:
         elif command == "status":
             status = self.project_manager.get_status(sender)
             # Add running task info (direct /do tasks) for this sender
-            task_state = self._sender_tasks.get(sender)
-            if task_state and task_state.get("task") and not task_state["task"].done():
+            active_tasks = [
+                (key, state) for key, state in self._sender_tasks.items()
+                if key[0] == sender and state.get("task") and not state["task"].done()
+            ]
+            for (_, proj), task_state in active_tasks:
                 elapsed = ""
                 if task_state.get("start"):
                     mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
                     elapsed = f" ({mins}m)"
                 desc = task_state.get("description", "unknown")[:120]
-                status += f"\n\nActive Task{elapsed}: {desc}"
+                status += f"\n\nActive Task [{proj}]{elapsed}: {desc}"
                 if task_state.get("step"):
                     status += f"\nStep: {task_state['step']}"
 
@@ -418,7 +422,7 @@ class SignalBot:
             current_project = self.project_manager.get_current_project(sender)
             if not current_project:
                 return "No project selected. Use /select <project> first."
-            busy = self._check_task_busy(sender)
+            busy = self._check_task_busy(sender, current_project)
             if busy:
                 return busy
 
@@ -439,12 +443,12 @@ class SignalBot:
             current_project = self.project_manager.get_current_project(sender)
             if not current_project:
                 return "No project selected. Use /select <project> first."
-            busy = self._check_task_busy(sender)
+            busy = self._check_task_busy(sender, current_project)
             if busy:
                 return busy
 
             task_msg = args or "User sent an image attachment"
-            await self._send_message(sender, "Working on it...")
+            await self._send_message(sender, f"[{current_project}] Working on it...")
             self._start_background_task(sender, task_msg, current_project, image_paths=image_paths)
             return None  # Response will be sent when task completes
 
@@ -453,25 +457,27 @@ class SignalBot:
                 return "Usage: /complex <task>\nBreaks task into PRD with stories and autonomous tasks."
             if self.cooldown_manager and self.cooldown_manager.is_active:
                 return self.cooldown_manager.get_state().user_message
-            if not self.project_manager.get_current_project(sender):
+            current_project = self.project_manager.get_current_project(sender)
+            if not current_project:
                 return "No project selected. Use /select <project> first."
-            busy = self._check_task_busy(sender)
+            busy = self._check_task_busy(sender, current_project)
             if busy:
                 return busy
 
             await self._send_message(sender, "Creating PRD and breaking into autonomous tasks...")
             # Run PRD creation in background (non-blocking)
-            self._start_prd_creation_task(sender, args)
+            self._start_prd_creation_task(sender, args, current_project)
             return None  # Response sent when PRD creation completes
 
         elif command == "cancel":
-            return await self._cancel_current_task(sender)
+            current_project = self.project_manager.get_current_project(sender)
+            return await self._cancel_current_task(sender, current_project)
 
         elif command == "summary":
             current_project = self.project_manager.get_current_project(sender)
             if not current_project:
                 return "No project selected. Use /select <project> first."
-            busy = self._check_task_busy(sender)
+            busy = self._check_task_busy(sender, current_project)
             if busy:
                 return busy
 
@@ -683,21 +689,27 @@ AI Assistant:
         """Start a Claude task in the background (non-blocking).
 
         This allows other commands to be processed while the task runs.
-        Each sender can have one concurrent task.
+        Each sender can have one concurrent task per project.
         """
+        task_key = (sender, project_name)
         task_state = {
             "description": task_description,
             "start": datetime.now(),
             "step": "Preparing context...",
             "task": None,  # Set after creation
+            "project": project_name,
         }
-        self._sender_tasks[sender] = task_state
+        self._sender_tasks[task_key] = task_state
+
+        # Capture project path at creation time to avoid race conditions
+        # when user switches projects while a task is running
+        task_project_path = self.project_manager.get_project_path(project_name)
 
         async def run_task():
             try:
                 async def progress_cb(msg: str):
                     task_state["step"] = msg
-                    await self._send_message(sender, msg)
+                    await self._send_message(sender, f"[{project_name}] {msg}")
 
                 # Get memory context for this task (use project_name captured at creation)
                 task_state["step"] = "Loading memory context..."
@@ -712,8 +724,8 @@ AI Assistant:
                     effective_description = task_description + paths_section
 
                 task_state["step"] = "Claude executing task..."
-                # Pass project_path directly to avoid shared-state race condition
-                task_project_path = self.project_manager.get_current_path(sender)
+                # Use project_path captured at task creation to avoid race conditions
+                # when user switches projects while a task is running
                 success, response = await self.runner.run_claude(
                     effective_description,
                     progress_callback=progress_cb,
@@ -733,21 +745,21 @@ AI Assistant:
                 )
                 t.add_done_callback(_log_task_exception)
 
-                # Send the response
-                await self._send_message(sender, response)
+                # Send the response prefixed with project name
+                await self._send_message(sender, f"[{project_name}] {response}")
 
             except asyncio.CancelledError:
-                await self._send_message(sender, "Task cancelled.")
+                await self._send_message(sender, f"[{project_name}] Task cancelled.")
                 logger.info("background_task_cancelled", task=task_description[:50])
             except Exception as e:
                 logger.error("background_task_error", error=str(e), exc_type=type(e).__name__)
-                await self._send_message(sender, "Task failed due to an internal error.")
+                await self._send_message(sender, f"[{project_name}] Task failed due to an internal error.")
             finally:
-                # Clear task state for this sender
-                self._sender_tasks.pop(sender, None)
+                # Clear task state for this (sender, project) pair
+                self._sender_tasks.pop(task_key, None)
 
         task_state["task"] = asyncio.create_task(run_task())
-        logger.info("background_task_started", task=task_description[:50], sender=sender)
+        logger.info("background_task_started", task=task_description[:50], sender=sender, project=project_name)
 
     async def _handle_global_command(self, sender: str, args: str) -> str:
         """Handle /global <subcommand> for cross-project memory operations."""
@@ -775,9 +787,10 @@ AI Assistant:
         else:
             return f"Unknown global command: {subcommand}\n\nUse /global for help."
 
-    def _check_task_busy(self, sender: str) -> Optional[str]:
-        """Return a busy message if a task is running for this sender, else None."""
-        task_state = self._sender_tasks.get(sender)
+    def _check_task_busy(self, sender: str, project: str) -> Optional[str]:
+        """Return a busy message if a task is running for this sender+project, else None."""
+        task_key = (sender, project)
+        task_state = self._sender_tasks.get(task_key)
         if not task_state or not task_state.get("task") or task_state["task"].done():
             return None
         elapsed = ""
@@ -785,53 +798,76 @@ AI Assistant:
             mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
             elapsed = f" ({mins}m)"
         desc = task_state.get("description", "unknown")[:100]
-        return f"Task in progress{elapsed}: {desc}\nUse /cancel to stop it."
+        return f"[{project}] Task in progress{elapsed}: {desc}\nUse /cancel to stop it."
 
-    async def _cancel_current_task(self, sender: str) -> str:
-        """Cancel the currently running task for this sender."""
-        task_state = self._sender_tasks.get(sender)
-        if not task_state or not task_state.get("task") or task_state["task"].done():
-            return "No task is currently running."
+    async def _cancel_current_task(self, sender: str, project: Optional[str] = None) -> str:
+        """Cancel the running task for this sender on the current project.
 
-        task_desc = task_state.get("description", "unknown")
-        elapsed = ""
-        if task_state.get("start"):
-            mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
-            elapsed = f" after {mins}m"
+        If no project is specified, cancels all tasks for this sender.
+        """
+        if project:
+            # Cancel task for specific project
+            task_key = (sender, project)
+            task_state = self._sender_tasks.get(task_key)
+            if not task_state or not task_state.get("task") or task_state["task"].done():
+                # Check if there are tasks on other projects
+                other_tasks = [
+                    (key, state) for key, state in self._sender_tasks.items()
+                    if key[0] == sender and state.get("task") and not state["task"].done()
+                ]
+                if other_tasks:
+                    task_list = ", ".join(f"{k[1]}" for k, _ in other_tasks)
+                    return f"No task running on [{project}]. Active tasks on: {task_list}\nSwitch project with /select to cancel."
+                return "No task is currently running."
 
-        task_state["task"].cancel()
+            task_desc = task_state.get("description", "unknown")
+            elapsed = ""
+            if task_state.get("start"):
+                mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
+                elapsed = f" after {mins}m"
 
-        # Also cancel any running Claude process
-        await self.runner.cancel()
+            task_state["task"].cancel()
+            logger.info("task_cancelled_by_user", task=task_desc[:50], sender=sender, project=project)
+            return f"[{project}] Cancelled{elapsed}: {task_desc[:100]}"
+        else:
+            # Cancel all tasks for this sender
+            cancelled = []
+            for key, state in list(self._sender_tasks.items()):
+                if key[0] == sender and state.get("task") and not state["task"].done():
+                    state["task"].cancel()
+                    cancelled.append(key[1])
+            if not cancelled:
+                return "No task is currently running."
+            logger.info("all_tasks_cancelled_by_user", sender=sender, projects=cancelled)
+            return f"Cancelled tasks on: {', '.join(str(p) for p in cancelled)}"
 
-        logger.info("task_cancelled_by_user", task=task_desc[:50], sender=sender)
-        return f"Cancelled{elapsed}: {task_desc[:100]}"
-
-    def _start_prd_creation_task(self, sender: str, task_description: str):
+    def _start_prd_creation_task(self, sender: str, task_description: str, project_name: str):
         """Start PRD creation in the background (non-blocking)."""
+        task_key = (sender, project_name)
         task_state = {
             "description": f"Creating PRD: {task_description[:50]}...",
             "start": datetime.now(),
             "step": "Initializing...",
             "task": None,  # Set after creation
+            "project": project_name,
         }
-        self._sender_tasks[sender] = task_state
+        self._sender_tasks[task_key] = task_state
 
         async def run_prd_creation():
             try:
                 result = await self._create_autonomous_prd(sender, task_description)
-                await self._send_message(sender, result)
+                await self._send_message(sender, f"[{project_name}] {result}")
             except asyncio.CancelledError:
-                await self._send_message(sender, "PRD creation cancelled.")
+                await self._send_message(sender, f"[{project_name}] PRD creation cancelled.")
                 logger.info("prd_creation_cancelled")
             except Exception as e:
                 logger.error("prd_creation_error", error=str(e), exc_type=type(e).__name__)
-                await self._send_message(sender, "PRD creation failed. Check logs for details.")
+                await self._send_message(sender, f"[{project_name}] PRD creation failed. Check logs for details.")
             finally:
-                self._sender_tasks.pop(sender, None)
+                self._sender_tasks.pop(task_key, None)
 
         task_state["task"] = asyncio.create_task(run_prd_creation())
-        logger.info("prd_creation_started", task=task_description[:50], sender=sender)
+        logger.info("prd_creation_started", task=task_description[:50], sender=sender, project=project_name)
 
     async def _create_autonomous_prd(self, sender: str, task_description: str) -> str:
         """Create a PRD with stories and tasks from a complex task description.
@@ -840,10 +876,11 @@ AI Assistant:
         """
         project_name = self.project_manager.get_current_project(sender)
         project_path = self.project_manager.get_current_path(sender)
+        task_key = (sender, project_name)
 
         # Helper to update step and notify user
         async def update_step(step: str, notify: bool = True):
-            task_state = self._sender_tasks.get(sender)
+            task_state = self._sender_tasks.get(task_key)
             if task_state:
                 task_state["step"] = step
             if notify:
@@ -1054,12 +1091,12 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 if self.cooldown_manager and self.cooldown_manager.is_active:
                     response = self.cooldown_manager.get_state().user_message
                 elif project_name:
-                    busy = self._check_task_busy(sender)
+                    busy = self._check_task_busy(sender, project_name)
                     if busy:
                         response = busy
                     else:
                         task_msg = message or "User sent an image attachment"
-                        await self._send_message(sender, "Working on it...")
+                        await self._send_message(sender, f"[{project_name}] Working on it...")
                         self._start_background_task(sender, task_msg, project_name, image_paths=image_paths)
                         return  # Response will be sent when task completes
                 elif image_paths:
