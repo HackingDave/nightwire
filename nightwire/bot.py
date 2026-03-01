@@ -76,6 +76,9 @@ class SignalBot:
         # Key: (sender_phone, project_name), Value: dict with task, description, start, step
         self._sender_tasks: Dict[tuple, dict] = {}
 
+        # File to persist interrupted tasks across restarts
+        self._interrupted_tasks_file = Path(self.config.config_dir).parent / "data" / "interrupted_tasks.json"
+
         # Memory system
         memory_db_path = Path(self.config.config_dir).parent / "data" / "memory.db"
         self.memory = MemoryManager(
@@ -192,6 +195,9 @@ class SignalBot:
 
         logger.info("bot_started", account=self.account)
 
+        # Notify users about tasks interrupted by previous shutdown/restart
+        await self._notify_interrupted_tasks()
+
     async def stop(self):
         """Stop the bot."""
         if not self.running:
@@ -217,10 +223,13 @@ class SignalBot:
         # Cancel Claude process before closing session so background tasks
         # can still send final messages if needed
         await self.runner.cancel()
+        # Save interrupted tasks before cancelling so we can notify on restart
+        await self._save_interrupted_tasks()
         # Cancel any running background tasks and wait for them to finish
         for key, state in list(self._sender_tasks.items()):
             task = state.get("task")
             if task and not task.done():
+                state["cancel_reason"] = "Service is restarting"
                 task.cancel()
         pending = [
             s["task"] for s in self._sender_tasks.values()
@@ -233,6 +242,67 @@ class SignalBot:
             await self.session.close()
         await self.memory.close()
         logger.info("bot_stopped")
+
+    async def _save_interrupted_tasks(self):
+        """Persist in-flight tasks to disk so we can notify users after restart."""
+        interrupted = []
+        for (sender, project), state in self._sender_tasks.items():
+            task = state.get("task")
+            if task and not task.done():
+                interrupted.append({
+                    "sender": sender,
+                    "project": project,
+                    "description": state.get("description", "unknown"),
+                    "start": state["start"].isoformat() if state.get("start") else None,
+                    "step": state.get("step", ""),
+                    "timestamp": datetime.now().isoformat(),
+                })
+        if interrupted:
+            try:
+                self._interrupted_tasks_file.parent.mkdir(parents=True, exist_ok=True)
+                self._interrupted_tasks_file.write_text(json.dumps(interrupted, indent=2))
+                logger.info("interrupted_tasks_saved", count=len(interrupted))
+            except Exception as e:
+                logger.error("interrupted_tasks_save_failed", error=str(e))
+        else:
+            # No tasks to save — clean up stale file
+            if self._interrupted_tasks_file.exists():
+                self._interrupted_tasks_file.unlink(missing_ok=True)
+
+    async def _notify_interrupted_tasks(self):
+        """On startup, notify users about tasks interrupted by the previous shutdown."""
+        if not self._interrupted_tasks_file.exists():
+            return
+        try:
+            data = json.loads(self._interrupted_tasks_file.read_text())
+            if not data:
+                return
+            for entry in data:
+                sender = entry.get("sender")
+                project = entry.get("project", "unknown")
+                desc = entry.get("description", "unknown task")
+                step = entry.get("step", "")
+                ts = entry.get("timestamp", "")
+                msg = (
+                    f"[{project}] Service was restarted while a task was running.\n"
+                    f"Interrupted task: {desc[:150]}\n"
+                    f"Last step: {step}\n"
+                    f"You may need to re-run this task."
+                )
+                try:
+                    await self._send_message(sender, msg)
+                    logger.info("interrupted_task_notified", sender=sender,
+                                project=project, task=desc[:50])
+                except Exception as e:
+                    logger.warning("interrupted_task_notify_failed",
+                                   sender=sender, error=str(e))
+            # Clean up the file after notifying
+            self._interrupted_tasks_file.unlink(missing_ok=True)
+            logger.info("interrupted_tasks_file_cleaned")
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error("interrupted_tasks_read_failed", error=str(e))
+            # Remove corrupt file
+            self._interrupted_tasks_file.unlink(missing_ok=True)
 
     async def _get_account(self):
         """Get the registered Signal account with retry.
@@ -750,6 +820,7 @@ AI Assistant:
             "step": "Preparing context...",
             "task": None,  # Set after creation
             "project": project_name,
+            "cancel_reason": None,  # Set before cancel() to explain why
         }
         self._sender_tasks[task_key] = task_state
 
@@ -818,8 +889,18 @@ AI Assistant:
                 await self._send_message(sender, f"[{project_name}] {response}")
 
             except asyncio.CancelledError:
-                await self._send_message(sender, f"[{project_name}] Task cancelled.")
-                logger.info("background_task_cancelled", task=task_description[:50])
+                reason = task_state.get("cancel_reason") or "Unknown reason"
+                elapsed = ""
+                if task_state.get("start"):
+                    mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
+                    elapsed = f" after {mins}m"
+                await self._send_message(
+                    sender,
+                    f"[{project_name}] Task cancelled{elapsed}: {reason}.\n"
+                    f"Task was: {task_description[:100]}"
+                )
+                logger.info("background_task_cancelled", task=task_description[:50],
+                            reason=reason)
             except Exception as e:
                 logger.error("background_task_error", error=str(e), exc_type=type(e).__name__)
                 await self._send_message(sender, f"[{project_name}] Task failed due to an internal error.")
@@ -895,6 +976,7 @@ AI Assistant:
                 mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
                 elapsed = f" after {mins}m"
 
+            task_state["cancel_reason"] = "Cancelled by user"
             task_state["task"].cancel()
             logger.info("task_cancelled_by_user", task=task_desc[:50], sender=sender, project=project)
             return f"[{project}] Cancelled{elapsed}: {task_desc[:100]}"
@@ -903,6 +985,7 @@ AI Assistant:
             cancelled = []
             for key, state in list(self._sender_tasks.items()):
                 if key[0] == sender and state.get("task") and not state["task"].done():
+                    state["cancel_reason"] = "Cancelled by user"
                     state["task"].cancel()
                     cancelled.append(key[1])
             if not cancelled:
@@ -921,6 +1004,7 @@ AI Assistant:
             "step": "Initializing...",
             "task": None,  # Set after creation
             "project": project_name,
+            "cancel_reason": None,
         }
         self._sender_tasks[task_key] = task_state
 
@@ -931,8 +1015,12 @@ AI Assistant:
                 )
                 await self._send_message(sender, f"[{project_name}] {result}")
             except asyncio.CancelledError:
-                await self._send_message(sender, f"[{project_name}] PRD creation cancelled.")
-                logger.info("prd_creation_cancelled")
+                reason = task_state.get("cancel_reason") or "Unknown reason"
+                await self._send_message(
+                    sender,
+                    f"[{project_name}] PRD creation cancelled: {reason}."
+                )
+                logger.info("prd_creation_cancelled", reason=reason)
             except Exception as e:
                 logger.error("prd_creation_error", error=str(e), exc_type=type(e).__name__)
                 await self._send_message(sender, f"[{project_name}] PRD creation failed. Check logs for details.")

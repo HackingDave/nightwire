@@ -5,6 +5,17 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.4] - 2026-03-01
+
+### Added
+- Task cancellation now explains WHY the task was cancelled (user cancel, service restart, etc.)
+- Service restart detection: on startup, users are notified about tasks interrupted by the previous shutdown
+- Interrupted tasks are persisted to disk so restart notifications survive the process lifecycle
+
+### Changed
+- "Task cancelled." message now includes the reason, elapsed time, and task description
+- PRD creation cancellation messages now include the cancellation reason
+
 ## [2.5.3] - 2026-02-28
 
 ### Fixed
