@@ -22,7 +22,8 @@ class AutoUpdater:
     """Checks for updates and applies them on admin approval."""
 
     def __init__(self, config, send_message: Callable[[str, str], Awaitable[None]],
-                 repo_dir: Optional[Path] = None):
+                 repo_dir: Optional[Path] = None,
+                 shutdown_callback: Optional[Callable[[], None]] = None):
         self.config = config
         self.send_message = send_message
         self.repo_dir = repo_dir or Path(__file__).parent.parent
@@ -30,6 +31,7 @@ class AutoUpdater:
         self.check_interval = config.auto_update_check_interval
         self.admin_phone = config.allowed_numbers[0] if config.allowed_numbers else None
         self._lock = asyncio.Lock()
+        self._shutdown_callback = shutdown_callback
 
         # Validate branch name to prevent git flag injection
         if not _BRANCH_RE.match(self.branch):
@@ -39,6 +41,7 @@ class AutoUpdater:
         self.pending_update = False
         self.pending_sha: Optional[str] = None
         self._check_task: Optional[asyncio.Task] = None
+        self.update_applied = False  # True after successful update (signals restart needed)
 
     async def _run_git(self, *args: str) -> str:
         """Run a git command and return stripped stdout."""
@@ -135,24 +138,27 @@ class AutoUpdater:
 
                 self.pending_update = False
                 self.pending_sha = None
+                self.update_applied = True
 
                 logger.info("update_applied", previous=previous_head[:7])
 
                 if self.admin_phone:
                     await self.send_message(self.admin_phone,
-                                            "Update applied successfully. Restarting...")
+                                            "Update applied successfully. Restarting after in-flight tasks complete...")
 
-                # Schedule a hard exit after a short delay. We use os._exit()
-                # because SystemExit raised inside an asyncio task is silently
-                # swallowed by the event loop (treated as an unhandled task
-                # exception, not a process exit signal).
-                import os as _os
+                # Trigger graceful shutdown so in-flight tasks can finish
+                # and send their responses before the process exits.
+                if self._shutdown_callback:
+                    self._shutdown_callback()
+                else:
+                    # Fallback: hard exit if no shutdown callback is wired
+                    import os as _os
 
-                async def _delayed_exit():
-                    await asyncio.sleep(2)
-                    _os._exit(EXIT_CODE_UPDATE)
+                    async def _delayed_exit():
+                        await asyncio.sleep(2)
+                        _os._exit(EXIT_CODE_UPDATE)
 
-                asyncio.create_task(_delayed_exit())
+                    asyncio.create_task(_delayed_exit())
                 return "Update applied. Restarting..."
 
             except subprocess.CalledProcessError as e:

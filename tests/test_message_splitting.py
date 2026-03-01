@@ -1,4 +1,4 @@
-"""Tests for message splitting in bot._send_message."""
+"""Tests for message splitting and text truncation in bot."""
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -76,3 +76,37 @@ class TestSplitMessage:
         assert len(result) == 2
         assert result[0] == "A" * 100
         assert result[1] == "A" * 100
+
+
+class TestTruncateDescription:
+    def test_short_description_unchanged(self):
+        assert SignalBot._truncate_description("hello world") == "hello world"
+
+    def test_exactly_at_limit(self):
+        desc = "x" * 100
+        assert SignalBot._truncate_description(desc) == desc
+
+    def test_truncates_at_word_boundary(self):
+        desc = "we don't seem to be doing well early on - anything you can learn to improve chances? Right now we are doing poorly"
+        result = SignalBot._truncate_description(desc)
+        assert result.endswith("...")
+        assert len(result) <= 103  # 100 + "..."
+        assert "Right now we" in result
+        # Should NOT cut mid-word like "we ar"
+        assert not result.endswith("ar...")
+
+    def test_adds_ellipsis_when_truncated(self):
+        desc = "a " * 100  # 200 chars
+        result = SignalBot._truncate_description(desc)
+        assert result.endswith("...")
+
+    def test_custom_max_len(self):
+        desc = "hello world this is a longer string"
+        result = SignalBot._truncate_description(desc, max_len=20)
+        assert len(result) <= 23  # 20 + "..."
+        assert result.endswith("...")
+
+    def test_no_space_falls_back_to_hard_truncate(self):
+        desc = "a" * 200  # No spaces at all
+        result = SignalBot._truncate_description(desc)
+        assert result == "a" * 100 + "..."

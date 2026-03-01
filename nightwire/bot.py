@@ -67,6 +67,8 @@ class SignalBot:
         self.session: Optional[aiohttp.ClientSession] = None
         self.running = False
         self.account: Optional[str] = None
+        self._shutdown_callback: Optional[callable] = None  # Set by main.py
+        self.restart_exit_code: Optional[int] = None  # Non-None = exit with this code after stop
         self._processed_messages = OrderedDict()  # Dedup: msg_hash -> timestamp
         self._last_ws_activity = 0.0  # monotonic timestamp of last websocket activity
         self._watchdog_task: Optional[asyncio.Task] = None
@@ -94,6 +96,10 @@ class SignalBot:
 
         # Auto-updater (initialized in start() if enabled)
         self.updater: Optional[AutoUpdater] = None
+
+    def set_shutdown_callback(self, callback: callable):
+        """Set the callback that triggers graceful shutdown (called from main.py)."""
+        self._shutdown_callback = callback
 
         # Cooldown manager (initialized in start())
         self.cooldown_manager = None
@@ -154,6 +160,7 @@ class SignalBot:
             self.updater = AutoUpdater(
                 config=self.config,
                 send_message=self._send_message,
+                shutdown_callback=self._shutdown_callback,
             )
             await self.updater.start()
 
@@ -198,8 +205,11 @@ class SignalBot:
         # Notify users about tasks interrupted by previous shutdown/restart
         await self._notify_interrupted_tasks()
 
+    # How long to wait for Claude to finish during shutdown before force-killing
+    SHUTDOWN_GRACE_SECONDS = 90
+
     async def stop(self):
-        """Stop the bot."""
+        """Stop the bot, waiting for in-flight Claude responses before shutting down."""
         if not self.running:
             return
         self.running = False
@@ -220,23 +230,57 @@ class SignalBot:
             await self.autonomous_manager.stop_loop()
         if self.nightwire_runner:
             await self.nightwire_runner.close()
-        # Cancel Claude process before closing session so background tasks
-        # can still send final messages if needed
-        await self.runner.cancel()
-        # Save interrupted tasks before cancelling so we can notify on restart
-        await self._save_interrupted_tasks()
-        # Cancel any running background tasks and wait for them to finish
-        for key, state in list(self._sender_tasks.items()):
-            task = state.get("task")
-            if task and not task.done():
-                state["cancel_reason"] = "Service is restarting"
-                task.cancel()
-        pending = [
-            s["task"] for s in self._sender_tasks.values()
+
+        # --- Graceful shutdown: let in-flight tasks finish before killing ---
+        active_tasks = [
+            (key, s) for key, s in self._sender_tasks.items()
             if s.get("task") and not s["task"].done()
         ]
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
+        if active_tasks:
+            task_names = [f"{k[1]}:{s.get('description', '?')[:40]}" for k, s in active_tasks]
+            logger.info("shutdown_waiting_for_tasks",
+                        count=len(active_tasks), tasks=task_names,
+                        grace_seconds=self.SHUTDOWN_GRACE_SECONDS)
+
+            # Wait for tasks to finish naturally (Claude subprocess will
+            # complete and the response will be sent to the user)
+            pending = [s["task"] for _, s in active_tasks]
+            done, still_running = await asyncio.wait(
+                pending, timeout=self.SHUTDOWN_GRACE_SECONDS
+            )
+
+            if done:
+                logger.info("shutdown_tasks_completed", count=len(done))
+
+            if still_running:
+                # Grace period expired — force-kill remaining Claude processes
+                # and cancel the tasks that didn't finish in time
+                logger.warning("shutdown_grace_expired",
+                               still_running=len(still_running))
+                await self.runner.cancel()
+                for key, state in list(self._sender_tasks.items()):
+                    task = state.get("task")
+                    if task and not task.done():
+                        state["cancel_reason"] = "Service is restarting (timed out waiting for response)"
+                        task.cancel()
+                remaining = [
+                    s["task"] for s in self._sender_tasks.values()
+                    if s.get("task") and not s["task"].done()
+                ]
+                if remaining:
+                    await asyncio.gather(*remaining, return_exceptions=True)
+            else:
+                # All tasks finished — cancel Claude processes that may have
+                # been started but have no associated task (shouldn't happen,
+                # but clean up just in case)
+                await self.runner.cancel()
+        else:
+            # No active tasks — just clean up any orphan processes
+            await self.runner.cancel()
+
+        # Save interrupted tasks (only tasks that didn't complete in time)
+        await self._save_interrupted_tasks()
+
         # Now safe to close session and database
         if self.session:
             await self.session.close()
@@ -897,7 +941,7 @@ AI Assistant:
                 await self._send_message(
                     sender,
                     f"[{project_name}] Task cancelled{elapsed}: {reason}.\n"
-                    f"Task was: {task_description[:100]}"
+                    f"Task was: {self._truncate_description(task_description)}"
                 )
                 logger.info("background_task_cancelled", task=task_description[:50],
                             reason=reason)
@@ -937,6 +981,18 @@ AI Assistant:
         else:
             return f"Unknown global command: {subcommand}\n\nUse /global for help."
 
+    @staticmethod
+    def _truncate_description(desc: str, max_len: int = 100) -> str:
+        """Truncate a task description at a word boundary with ellipsis."""
+        if len(desc) <= max_len:
+            return desc
+        # Find last space before the limit to avoid cutting mid-word
+        truncated = desc[:max_len]
+        last_space = truncated.rfind(" ")
+        if last_space > max_len // 2:
+            truncated = truncated[:last_space]
+        return truncated + "..."
+
     def _check_task_busy(self, sender: str, project: str) -> Optional[str]:
         """Return a busy message if a task is running for this sender+project, else None."""
         task_key = (sender, project)
@@ -947,7 +1003,7 @@ AI Assistant:
         if task_state.get("start"):
             mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
             elapsed = f" ({mins}m)"
-        desc = task_state.get("description", "unknown")[:100]
+        desc = self._truncate_description(task_state.get("description", "unknown"))
         return f"[{project}] Task in progress{elapsed}: {desc}\nUse /cancel to stop it."
 
     async def _cancel_current_task(self, sender: str, project: Optional[str] = None) -> str:
@@ -979,7 +1035,7 @@ AI Assistant:
             task_state["cancel_reason"] = "Cancelled by user"
             task_state["task"].cancel()
             logger.info("task_cancelled_by_user", task=task_desc[:50], sender=sender, project=project)
-            return f"[{project}] Cancelled{elapsed}: {task_desc[:100]}"
+            return f"[{project}] Cancelled{elapsed}: {self._truncate_description(task_desc)}"
         else:
             # Cancel all tasks for this sender
             cancelled = []

@@ -58,12 +58,18 @@ async def main():
     loop = asyncio.get_running_loop()
     shutdown_event = asyncio.Event()
 
-    def handle_shutdown(sig):
-        logger.info("shutdown_signal_received", signal=sig.name)
+    def handle_shutdown(sig=None):
+        if sig:
+            logger.info("shutdown_signal_received", signal=sig.name)
+        else:
+            logger.info("shutdown_requested_by_updater")
         shutdown_event.set()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, handle_shutdown, sig)
+
+    # Give the bot a way to trigger graceful shutdown (used by auto-updater)
+    bot.set_shutdown_callback(handle_shutdown)
 
     # Run the bot
     try:
@@ -85,6 +91,12 @@ async def main():
     finally:
         await bot.stop()
         logger.info("nightwire_stopped")
+        # If the updater triggered the shutdown, exit with its code
+        # so systemd knows to restart the service
+        if bot.updater and bot.updater.update_applied:
+            from .updater import EXIT_CODE_UPDATE
+            logger.info("exiting_for_update", exit_code=EXIT_CODE_UPDATE)
+            sys.exit(EXIT_CODE_UPDATE)
 
 
 def run():

@@ -5,6 +5,17 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.5] - 2026-03-01
+
+### Changed
+- Graceful shutdown now waits up to 90 seconds for in-flight Claude responses to complete before killing processes
+- Auto-updater triggers graceful shutdown instead of hard `os._exit()`, allowing tasks to finish and report results
+- Task descriptions in busy/cancel messages now truncate at word boundaries with "..." instead of cutting mid-word
+
+### Fixed
+- Service restart killed Claude processes immediately, losing in-flight responses — now waits for completion
+- Task busy message truncated descriptions at exactly 100 chars mid-word (e.g., "right now we ar") — fixed with word-boundary truncation
+
 ## [2.5.4] - 2026-03-01
 
 ### Added
