@@ -5,6 +5,14 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.8] - 2026-03-01
+
+### Fixed
+- Unnecessary retries: non-zero exits with empty stderr were classified as transient, causing spurious retries
+- Kill signals (SIGKILL/SIGTERM) during shutdown no longer trigger retries
+- Retry messages no longer sent to users via Signal (logged server-side only)
+- Reduced max retries from 2 to 1 — only genuine transient errors (timeouts, connection resets, 5xx) retry
+
 ## [2.5.7] - 2026-03-01
 
 ### Added

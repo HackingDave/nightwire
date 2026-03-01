@@ -17,7 +17,7 @@ logger = structlog.get_logger()
 PROGRESS_UPDATE_INTERVAL = 300
 
 # Retry configuration
-MAX_RETRIES = 2
+MAX_RETRIES = 1
 RETRY_BASE_DELAY = 5  # seconds
 
 
@@ -66,13 +66,10 @@ def classify_error(return_code: int, output: str, error_text: str) -> ErrorCateg
         return ErrorCategory.TRANSIENT
     if "server error" in combined or "500" in combined or "502" in combined:
         return ErrorCategory.TRANSIENT
-    if return_code in (-9, -15, 137, 143):  # Killed signals
-        return ErrorCategory.TRANSIENT
+    if return_code in (-9, -15, 137, 143):  # Killed signals (likely shutdown)
+        return ErrorCategory.PERMANENT
 
-    # Non-zero exit with no errors - assume transient
-    if return_code != 0 and not error_text.strip():
-        return ErrorCategory.TRANSIENT
-
+    # Non-zero exit with no specific error pattern - don't retry
     return ErrorCategory.PERMANENT
 
 
@@ -191,13 +188,6 @@ class ClaudeRunner:
                     delay=delay,
                     previous_error=last_error[:200],
                 )
-                if progress_callback:
-                    try:
-                        await progress_callback(
-                            f"Retrying ({attempt}/{max_retries}) after {delay}s delay..."
-                        )
-                    except Exception as e:
-                        logger.warning("progress_callback_error", error=str(e))
                 await asyncio.sleep(delay)
 
             result = await self._execute_claude_once(
