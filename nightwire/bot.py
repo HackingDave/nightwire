@@ -72,6 +72,7 @@ class SignalBot:
         self._processed_messages = OrderedDict()  # Dedup: msg_hash -> timestamp
         self._last_ws_activity = 0.0  # monotonic timestamp of last websocket activity
         self._watchdog_task: Optional[asyncio.Task] = None
+        self._startup_notified = False  # True after "ready" message sent on first WS connect
 
         # Per-(sender, project) task state tracking - allows concurrent tasks
         # across users AND across different projects for the same user.
@@ -1423,6 +1424,20 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     logger.info("websocket_connected")
                     self._last_ws_activity = _time.monotonic()
                     reconnect_delay = 5  # Reset on successful connection
+
+                    # Notify users that the bot is ready on first connect
+                    if not self._startup_notified:
+                        self._startup_notified = True
+                        from . import __version__
+                        for phone in self.config.allowed_numbers:
+                            try:
+                                await self._send_message(
+                                    phone,
+                                    f"Nightwire v{__version__} started and ready."
+                                )
+                            except Exception as e:
+                                logger.warning("startup_notify_error", error=str(e))
+
                     async for msg in ws:
                         self._last_ws_activity = _time.monotonic()
                         if msg.type == aiohttp.WSMsgType.TEXT:

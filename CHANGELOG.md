@@ -5,6 +5,11 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.7] - 2026-03-01
+
+### Added
+- Startup ready notification: bot sends "Nightwire v{version} started and ready." to all allowed users on first WebSocket connect
+
 ## [2.5.6] - 2026-03-01
 
 ### Changed
