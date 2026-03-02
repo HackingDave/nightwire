@@ -151,14 +151,12 @@ class AutoUpdater:
                 if self._shutdown_callback:
                     self._shutdown_callback()
                 else:
-                    # Fallback: hard exit if no shutdown callback is wired
+                    # Fallback: hard exit if no shutdown callback is wired.
+                    # Use call_later to avoid an unawaited coroutine (which triggers
+                    # RuntimeWarning in tests and gc).
                     import os as _os
-
-                    async def _delayed_exit():
-                        await asyncio.sleep(2)
-                        _os._exit(EXIT_CODE_UPDATE)
-
-                    asyncio.create_task(_delayed_exit())
+                    loop = asyncio.get_running_loop()
+                    loop.call_later(2, _os._exit, EXIT_CODE_UPDATE)
                 return "Update applied. Restarting..."
 
             except subprocess.CalledProcessError as e:

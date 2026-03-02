@@ -158,7 +158,7 @@ class TestAutoUpdater:
 
     @pytest.mark.asyncio
     async def test_apply_update_success_fallback(self):
-        """apply_update falls back to _delayed_exit when no shutdown_callback."""
+        """apply_update uses call_later to schedule exit when no shutdown_callback."""
         send = AsyncMock()
         updater = self._make_updater(send_message=send)
         updater.pending_update = True
@@ -170,15 +170,20 @@ class TestAutoUpdater:
             return ""
         updater._run_git = fake_run_git
 
+        mock_loop = MagicMock()
         with patch("nightwire.updater.subprocess.run") as mock_run, \
-             patch("nightwire.updater.asyncio.create_task") as mock_create_task:
+             patch("nightwire.updater.asyncio.get_running_loop", return_value=mock_loop):
             mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
             result = await updater.apply_update()
 
         assert "Update applied" in result
         assert updater.pending_update is False
         assert updater.update_applied is True
-        mock_create_task.assert_called()  # _delayed_exit task was created (fallback)
+        mock_loop.call_later.assert_called_once()
+        args = mock_loop.call_later.call_args[0]
+        assert args[0] == 2  # delay
+        assert args[1].__name__ == "_exit"  # os._exit
+        assert args[2] == 75  # EXIT_CODE_UPDATE
 
     @pytest.mark.asyncio
     async def test_apply_update_success_with_shutdown_callback(self):
