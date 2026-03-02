@@ -488,8 +488,8 @@ class SignalBot:
             logger.warning("blocked_send_to_unauthorized", recipient="..." + recipient[-4:])
             return
 
-        # Add nightwire identifier to all messages
-        message = f"[nightwire] {message}"
+        # Add instance identifier to all messages
+        message = f"[{self.config.instance_name}] {message}"
 
         # Split long messages into multiple parts
         parts = self._split_message(message)
@@ -1635,7 +1635,8 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             # Ignore bot-generated messages (prevents feedback loop between
             # multiple linked instances — each instance's responses arrive as
             # dataMessages on other instances sharing the same account)
-            if message_text and message_text.strip().startswith("[nightwire]"):
+            # Matches any instance name variant: [nightwire], [nightwire-mac], etc.
+            if message_text and message_text.strip().startswith("[nightwire"):
                 return
 
             # Ignore receipts, typing indicators, and other message types

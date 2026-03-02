@@ -78,6 +78,11 @@ class Config:
                 logger.error("config_invalid_value", key="autonomous.max_parallel", value=mp, valid="1-10")
 
     @property
+    def instance_name(self) -> str:
+        """Get the display name for this bot instance (e.g., 'nightwire', 'nightwire-mac')."""
+        return self.settings.get("instance_name", "nightwire")
+
+    @property
     def signal_api_url(self) -> str:
         """Get Signal API URL. Env var SIGNAL_API_URL takes precedence."""
         return os.environ.get("SIGNAL_API_URL") or self.settings.get("signal_api_url", "http://127.0.0.1:8080")
