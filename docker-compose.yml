@@ -9,19 +9,15 @@
 
 services:
   signal-api:
-    image: bbernhard/signal-cli-rest-api:latest
+    image: bbernhard/signal-cli-rest-api:1772646660-ci
     container_name: signal-api
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./signal-data:/home/.local/share/signal-cli
-      # Mount patched signal-cli over container's bundled version
-      - ./signal-cli-0.13.24:/opt/signal-cli-0.13.23
     environment:
       - MODE=json-rpc
-      # Point Java to the native library in the mounted signal-cli
-      - JAVA_OPTS=-Djava.library.path=/opt/signal-cli-0.13.23/lib
     healthcheck:
       test: ["CMD", "sh", "-c", "curl -sf http://127.0.0.1:8080/v1/about && curl -sf http://127.0.0.1:8080/v1/accounts"]
       interval: 60s

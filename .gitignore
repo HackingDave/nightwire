@@ -60,5 +60,3 @@ plugins/bluos_music/
 signal-data/
 signal-cli-config/
 
-# Patched signal-cli binary distribution (~237MB)
-signal-cli-[0-9]*/

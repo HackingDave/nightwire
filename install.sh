@@ -3,7 +3,7 @@
 # nightwire installer
 # Signal + Claude AI Bot
 #
-# Usage: ./install.sh [--skip-signal] [--skip-systemd] [--no-prepackaged] [--uninstall] [--restart]
+# Usage: ./install.sh [--skip-signal] [--skip-systemd] [--uninstall] [--restart]
 #
 
 set -e
@@ -64,98 +64,47 @@ wait_for_qrcode() {
 }
 
 # =============================================================================
-# Signal CLI patching for device linking (ACI binary fix)
-# =============================================================================
-# signal-cli <= 0.13.24 has a bug where device linking fails because Signal
-# changed their provisioning protocol to send ACI as binary bytes instead of
-# a string. See: https://github.com/AsamK/signal-cli/issues/1937
-#
-# This downloads signal-cli JVM edition, applies a pre-compiled patch, and
-# uses it for device linking. The Docker container handles messaging after.
+# Device linking — uses signal-cli inside the Docker container via docker exec.
+# The upstream image (1772646660-ci) includes all necessary fixes.
 # =============================================================================
 
-SIGNAL_CLI_VERSION="0.13.24"
-
-# Downloads, patches, and persists signal-cli for device linking.
-# Delegates download/patching to scripts/apply-signal-patches.sh.
-# Sets: JAVA_CMD, SIGNAL_CLI_CMD, SIGNAL_CLI_LIB_DIR, JAVA_HOME
+# Starts the Signal bridge container for device linking.
+# Sets: SIGNAL_CLI_CMD (docker exec command prefix)
 # Returns 0 on success, 1 on failure.
 prepare_link_tool() {
     local install_dir="$1"
 
     echo -e "  ${BLUE}Preparing device link tool...${NC}"
 
-    # 1. Find or install Java 21+
-    JAVA_CMD=""
-    for java_path in \
-        /usr/lib/jvm/java-21-*/bin/java \
-        /usr/lib/jvm/java-*/bin/java \
-        /opt/homebrew/opt/openjdk@21/bin/java \
-        /opt/homebrew/opt/openjdk/bin/java; do
-        if [ -x "$java_path" ] 2>/dev/null; then
-            java_ver=$("$java_path" -version 2>&1 | head -1 | sed 's/.*"\([0-9]*\).*/\1/' | head -1)
-            if [ "${java_ver:-0}" -ge 21 ]; then
-                JAVA_CMD="$java_path"
-                break
-            fi
-        fi
-    done
-
-    # Try bare 'java' command
-    if [ -z "$JAVA_CMD" ] && command -v java &>/dev/null; then
-        java_ver=$(java -version 2>&1 | head -1 | sed 's/.*"\([0-9]*\).*/\1/' | head -1)
-        if [ "${java_ver:-0}" -ge 21 ]; then
-            JAVA_CMD="java"
-        fi
-    fi
-
-    if [ -z "$JAVA_CMD" ]; then
-        echo -ne "  Installing Java 21 runtime..."
-        if command -v apt-get &>/dev/null; then
-            sudo apt-get install -y -qq openjdk-21-jre-headless > /dev/null 2>&1
-        elif command -v dnf &>/dev/null; then
-            sudo dnf install -y -q java-21-openjdk-headless > /dev/null 2>&1
-        elif command -v brew &>/dev/null; then
-            brew install --quiet openjdk@21 > /dev/null 2>&1
-        fi
-
-        for java_path in \
-            /usr/lib/jvm/java-21-*/bin/java \
-            /opt/homebrew/opt/openjdk@21/bin/java \
-            /opt/homebrew/opt/openjdk/bin/java; do
-            if [ -x "$java_path" ] 2>/dev/null; then
-                JAVA_CMD="$java_path"
-                break
-            fi
-        done
-
-        if [ -z "$JAVA_CMD" ]; then
-            echo -e " ${RED}failed${NC}"
-            echo -e "  ${RED}Java 21+ is required for device linking. Install manually and re-run.${NC}"
-            return 1
-        fi
-        echo -e " ${GREEN}done${NC}"
-    fi
-    echo -e "  ${GREEN}✓${NC} Java 21+"
-
-    # 2. Run the shared patch script to download & patch signal-cli
-    local patch_script="$install_dir/scripts/apply-signal-patches.sh"
-    if [ -x "$patch_script" ]; then
-        if ! bash "$patch_script" "$install_dir"; then
-            echo -e "  ${RED}Patch script failed${NC}"
-            return 1
-        fi
-    else
-        echo -e "  ${YELLOW}!${NC} Patch script not found at $patch_script"
+    # Ensure compose file exists
+    if [ ! -f "$install_dir/docker-compose.yml" ]; then
+        echo -e "  ${RED}docker-compose.yml not found${NC}"
         return 1
     fi
 
-    # Set up environment for signal-cli
-    JAVA_HOME=$(dirname "$(dirname "$JAVA_CMD")")
-    SIGNAL_CLI_CMD="$install_dir/signal-cli-${SIGNAL_CLI_VERSION}/bin/signal-cli"
-    SIGNAL_CLI_LIB_DIR="$install_dir/signal-cli-${SIGNAL_CLI_VERSION}/lib"
+    # Start the signal-api container (needed for docker exec)
+    cd "$install_dir"
+    docker compose up -d signal-api 2>/dev/null || docker start signal-api 2>/dev/null || true
+    cd - > /dev/null
 
-    echo -e "  ${GREEN}✓${NC} Link tool ready"
+    # Wait for container to be running
+    local waited=0
+    while [ $waited -lt 15 ]; do
+        if docker ps --format '{{.Names}}' | grep -q '^signal-api$'; then
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    if ! docker ps --format '{{.Names}}' | grep -q '^signal-api$'; then
+        echo -e "  ${RED}signal-api container failed to start${NC}"
+        return 1
+    fi
+
+    SIGNAL_CLI_CMD="docker exec signal-api signal-cli"
+
+    echo -e "  ${GREEN}✓${NC} Link tool ready (docker exec)"
     return 0
 }
 
@@ -182,12 +131,10 @@ run_device_link() {
             echo -e "  Signal's provisioning window is 60 seconds — scan promptly."
         fi
 
-        # Run signal-cli link in background, capture output
+        # Run signal-cli link in background via docker exec, capture output
         local link_log
         link_log=$(mktemp)
-        JAVA_HOME="$JAVA_HOME" \
-            SIGNAL_CLI_OPTS="-Djava.library.path=$SIGNAL_CLI_LIB_DIR" \
-            "$SIGNAL_CLI_CMD" --config "$config_dir" link --name "$device_name" \
+        $SIGNAL_CLI_CMD --config /home/.local/share/signal-cli link --name "$device_name" \
             > "$link_log" 2>&1 &
         LINK_PID=$!
 
@@ -378,7 +325,6 @@ SKIP_SYSTEMD=false
 UNINSTALL=false
 RESTART=false
 QUICK_MODE=false
-NO_PREPACKAGED=false
 PHONE_NUMBER_ARG=""
 
 # Parse arguments
@@ -404,10 +350,6 @@ for arg in "$@"; do
             QUICK_MODE=true
             shift
             ;;
-        --no-prepackaged)
-            NO_PREPACKAGED=true
-            shift
-            ;;
         --phone=*)
             PHONE_NUMBER_ARG="${arg#*=}"
             shift
@@ -420,7 +362,6 @@ for arg in "$@"; do
             echo "  --phone=NUMBER     Set phone number (e.g., --phone=+15551234567)"
             echo "  --skip-signal      Skip Signal pairing (configure later)"
             echo "  --skip-systemd     Skip service installation"
-            echo "  --no-prepackaged   Use host-side patching instead of pre-built Docker image"
             echo "  --uninstall        Remove nightwire service and containers"
             echo "  --restart          Restart the nightwire service"
             echo "  --help, -h         Show this help message"
@@ -526,14 +467,11 @@ if [ "$UNINSTALL" = true ]; then
     if command -v docker &> /dev/null && docker info &> /dev/null 2>&1; then
         # Use docker compose down to cleanly remove containers + networks
         COMPOSE_DOWN=false
-        for cfile in docker-compose.yml docker-compose.prepackaged.yml docker-compose.unpatched.yml; do
-            if [ -f "$INSTALL_DIR/$cfile" ]; then
-                echo -e "${BLUE}Stopping Docker compose project...${NC}"
-                (cd "$INSTALL_DIR" && docker compose -f "$cfile" down 2>/dev/null) || true
-                COMPOSE_DOWN=true
-                break
-            fi
-        done
+        if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+            echo -e "${BLUE}Stopping Docker compose project...${NC}"
+            (cd "$INSTALL_DIR" && docker compose down 2>/dev/null) || true
+            COMPOSE_DOWN=true
+        fi
 
         # Also remove any containers by name (in case compose file is missing)
         for CONTAINER in signal-api nightwire; do
@@ -560,7 +498,7 @@ if [ "$UNINSTALL" = true ]; then
         # ── Step 3: Optionally remove Docker images ───────────────────────
 
         DOCKER_IMAGES=()
-        for img in bbernhard/signal-cli-rest-api:latest nightwire-signal:latest nightwire-sandbox:latest; do
+        for img in bbernhard/signal-cli-rest-api:1772646660-ci nightwire-sandbox:latest; do
             if docker image inspect "$img" &> /dev/null; then
                 DOCKER_IMAGES+=("$img")
             fi
@@ -588,14 +526,7 @@ if [ "$UNINSTALL" = true ]; then
         fi
     fi
 
-    # ── Step 4: Remove signal-cli patches and backups ─────────────────────
-
-    if [ -d "$INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}" ]; then
-        echo -e "${BLUE}Removing signal-cli patches...${NC}"
-        rm -rf "$INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}"
-        echo -e "  ${GREEN}✓${NC} Removed signal-cli-${SIGNAL_CLI_VERSION}/"
-        REMOVED+=("signal-cli patches")
-    fi
+    # ── Step 4: Remove signal-data backups ──────────────────────────────
 
     # Remove signal-data backup directories
     backup_count=0
@@ -653,7 +584,7 @@ if [ "$UNINSTALL" = true ]; then
     fi
 
     # Marker and temp files
-    for f in .use-prepackaged-signal .patched run.sh link_qr.png; do
+    for f in run.sh link_qr.png; do
         if [ -f "$INSTALL_DIR/$f" ]; then
             rm -f "$INSTALL_DIR/$f"
             REMOVED+=("$f")
@@ -1302,40 +1233,7 @@ SANDBOXEOF
 fi
 
 # -----------------------------------------------------------------------------
-# Pre-packaged Signal Docker Image (default: builds patches into the image)
-# -----------------------------------------------------------------------------
-USE_PREPACKAGED=false
-PREPACKAGED_MARKER="$INSTALL_DIR/.use-prepackaged-signal"
-
-if [ "$DOCKER_OK" = true ] && [ "$SKIP_SIGNAL" = false ]; then
-    if [ "$NO_PREPACKAGED" = true ]; then
-        echo -e "  ${YELLOW}!${NC} Using host-side patching (--no-prepackaged)"
-    else
-        USE_PREPACKAGED=true
-
-        # Check if image already exists
-        if docker image inspect nightwire-signal:latest &>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} Pre-packaged image already built (nightwire-signal:latest)"
-        else
-            if run_with_spinner "Building pre-packaged Signal image (this may take a few minutes)" docker build -t nightwire-signal:latest -f "$INSTALL_DIR/Dockerfile.signal" "$INSTALL_DIR"; then
-                echo -e "  ${GREEN}✓${NC} Pre-packaged image built (nightwire-signal:latest)"
-            else
-                echo "    Falling back to manual patching."
-                echo "    You can retry later:"
-                echo "    cd $INSTALL_DIR && docker build -t nightwire-signal:latest -f Dockerfile.signal ."
-                USE_PREPACKAGED=false
-            fi
-        fi
-
-        # Write marker file so upgrades/restarts know which mode to use
-        if [ "$USE_PREPACKAGED" = true ]; then
-            echo "true" > "$PREPACKAGED_MARKER"
-        fi
-    fi
-fi
-
-# -----------------------------------------------------------------------------
-# Signal Pairing — uses patched signal-cli on host for reliable linking
+# Signal Pairing — uses signal-cli inside the Docker container
 # -----------------------------------------------------------------------------
 SIGNAL_PAIRED=false
 
@@ -1395,12 +1293,9 @@ if [ "$SKIP_SIGNAL" = false ]; then
         echo ""
     fi
 
-    # Prepare patched signal-cli for device linking (persisted to $INSTALL_DIR/signal-cli-*)
+    # Start signal-api container and prepare docker exec for device linking
     if prepare_link_tool "$INSTALL_DIR"; then
         echo ""
-
-        # Stop any existing signal-api container (frees port 8080 and avoids conflicts)
-        docker rm -f signal-api 2>/dev/null || true
 
         # Run device linking
         if run_device_link "$SIGNAL_DATA_DIR" "$REMOTE_MODE" "$DEVICE_NAME"; then
@@ -1441,57 +1336,27 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
         COMPOSE="docker-compose"
     fi
 
-    # Choose compose file based on prepackaged image mode
-    if [ "$USE_PREPACKAGED" = true ]; then
-        COMPOSE_FILE="docker-compose.prepackaged.yml"
-    else
-        COMPOSE_FILE="docker-compose.yml"
-    fi
-
-    if [ -n "$COMPOSE" ] && [ -f "$INSTALL_DIR/$COMPOSE_FILE" ]; then
+    if [ -n "$COMPOSE" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
         cd "$INSTALL_DIR"
-        $COMPOSE -f "$COMPOSE_FILE" up -d --force-recreate
+        $COMPOSE up -d --force-recreate
         cd - > /dev/null
     else
         # Fallback: direct docker run (when docker compose is unavailable)
         docker rm -f signal-api 2>/dev/null || true
         sleep 1
 
-        if [ "$USE_PREPACKAGED" = true ]; then
-            # Pre-packaged image: no volume mounts for patches needed
-            docker run -d \
-                --name signal-api \
-                --restart unless-stopped \
-                --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
-                --health-interval 60s \
-                --health-timeout 10s \
-                --health-retries 3 \
-                --health-start-period 30s \
-                -p "127.0.0.1:8080:8080" \
-                -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
-                -e MODE=json-rpc \
-                nightwire-signal:latest
-        else
-            # Classic mode: mount patched signal-cli from host
-            PATCH_MOUNT_ARGS=""
-            if [ -d "$INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}" ]; then
-                PATCH_MOUNT_ARGS="-v $INSTALL_DIR/signal-cli-${SIGNAL_CLI_VERSION}:/opt/signal-cli-0.13.23 -e JAVA_OPTS=-Djava.library.path=/opt/signal-cli-0.13.23/lib"
-            fi
-
-            docker run -d \
-                --name signal-api \
-                --restart unless-stopped \
-                --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
-                --health-interval 60s \
-                --health-timeout 10s \
-                --health-retries 3 \
-                --health-start-period 30s \
-                -p "127.0.0.1:8080:8080" \
-                -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
-                $PATCH_MOUNT_ARGS \
-                -e MODE=json-rpc \
-                bbernhard/signal-cli-rest-api:latest
-        fi
+        docker run -d \
+            --name signal-api \
+            --restart unless-stopped \
+            --health-cmd "curl -sf http://127.0.0.1:8080/v1/about || exit 1" \
+            --health-interval 60s \
+            --health-timeout 10s \
+            --health-retries 3 \
+            --health-start-period 30s \
+            -p "127.0.0.1:8080:8080" \
+            -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
+            -e MODE=json-rpc \
+            bbernhard/signal-cli-rest-api:1772646660-ci
     fi
 
     sleep 3
@@ -1547,8 +1412,7 @@ Type=simple
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=-$CONFIG_DIR/.env
-ExecStartPre=/bin/bash -c '[ -f $INSTALL_DIR/.use-prepackaged-signal ] || ([ -x $INSTALL_DIR/scripts/apply-signal-patches.sh ] && $INSTALL_DIR/scripts/apply-signal-patches.sh $INSTALL_DIR) || echo "WARNING: signal-cli patches failed to apply" >&2'
-ExecStartPre=/bin/bash -c 'CFILE=docker-compose.yml; [ -f $INSTALL_DIR/.use-prepackaged-signal ] && CFILE=docker-compose.prepackaged.yml; [ "\$CFILE" = "docker-compose.yml" ] && [ ! -f $INSTALL_DIR/signal-cli-0.13.24/.patched ] && CFILE=docker-compose.unpatched.yml && echo "WARNING: Using unpatched signal-cli (patches not applied). Run: ./scripts/apply-signal-patches.sh" >&2; cd $INSTALL_DIR && docker compose -f \$CFILE up -d 2>/dev/null || docker start signal-api 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'cd $INSTALL_DIR && docker compose up -d 2>/dev/null || docker start signal-api 2>/dev/null || true'
 ExecStart=$VENV_DIR/bin/python3 -m nightwire
 StandardOutput=append:$LOGS_DIR/nightwire.log
 StandardError=append:$LOGS_DIR/nightwire.log

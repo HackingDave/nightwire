@@ -5,6 +5,14 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.13] - 2026-03-04
+
+### Changed
+- Updated signal-cli-rest-api to upstream fixed build (1772646660-ci); device linking now uses Docker exec instead of host-side Java
+
+### Removed
+- Signal-cli patching infrastructure (patch script, Dockerfile, prepackaged/unpatched compose files, patch files)
+
 ## [2.5.12] - 2026-03-03
 
 ### Changed

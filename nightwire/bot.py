@@ -900,20 +900,7 @@ AI Assistant:
         # 3. Account
         lines.append(f"Account: {self.account or 'NOT SET'}")
 
-        # 4. Signal-cli patch status
-        install_dir = Path(self.config.config_dir).parent
-        patch_marker = install_dir / "signal-cli-0.13.24" / ".patched"
-        if patch_marker.exists():
-            patch_ver = patch_marker.read_text().strip()
-            lines.append(f"Signal-cli patches: Applied (v{patch_ver})")
-        else:
-            signal_cli_dir = install_dir / "signal-cli-0.13.24"
-            if signal_cli_dir.exists():
-                lines.append("Signal-cli patches: Directory exists but NOT patched")
-            else:
-                lines.append("Signal-cli patches: Not installed (using container default)")
-
-        # 5. Docker container status
+        # 4. Docker container status
         try:
             result = await asyncio.to_thread(
                 __import__('subprocess').run,

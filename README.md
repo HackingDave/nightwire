@@ -119,7 +119,7 @@ The installer supports flags for advanced usage:
 
 The bot runs natively in a Python venv, managed by systemd (Linux) or launchd (macOS). Docker is only used for the Signal bridge (signal-cli-rest-api).
 
-**ARM (aarch64/arm64):** The installer detects ARM and offers a pre-packaged Docker image with all signal-cli patches baked in — no host-side Java or manual patching required. This is the recommended path for ARM devices like Raspberry Pi and ARM cloud instances.
+**All architectures:** The upstream Docker image (`bbernhard/signal-cli-rest-api`) works on x86_64, ARM64, and other platforms — no host-side Java or manual patching required.
 
 ---
 
