@@ -109,13 +109,12 @@ prepare_link_tool() {
 }
 
 # Runs device linking with QR code display and retry logic.
-# Args: $1=signal_data_dir $2=remote_mode(true/false) $3=device_name(default: nightwire)
+# Args: $1=remote_mode(true/false) $2=device_name(default: nightwire)
 # Sets: LINKED_NUMBER on success
 # Returns 0 on success, 1 on failure.
 run_device_link() {
-    local config_dir="$1"
-    local remote_mode="$2"
-    local device_name="${3:-nightwire}"
+    local remote_mode="$1"
+    local device_name="${2:-nightwire}"
     local max_attempts=3
     local attempt=0
 
@@ -584,7 +583,7 @@ if [ "$UNINSTALL" = true ]; then
     fi
 
     # Marker and temp files
-    for f in run.sh link_qr.png; do
+    for f in run.sh; do
         if [ -f "$INSTALL_DIR/$f" ]; then
             rm -f "$INSTALL_DIR/$f"
             REMOVED+=("$f")
@@ -1298,7 +1297,7 @@ if [ "$SKIP_SIGNAL" = false ]; then
         echo ""
 
         # Run device linking
-        if run_device_link "$SIGNAL_DATA_DIR" "$REMOTE_MODE" "$DEVICE_NAME"; then
+        if run_device_link "$REMOTE_MODE" "$DEVICE_NAME"; then
             SIGNAL_PAIRED=true
 
             if [ -n "$LINKED_NUMBER" ] && [ "$LINKED_NUMBER" != "$PHONE_NUMBER" ]; then

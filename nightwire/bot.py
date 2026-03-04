@@ -912,7 +912,7 @@ AI Assistant:
         except Exception:
             lines.append("Docker signal-api: unknown (docker not available)")
 
-        # 6. Active tasks
+        # 5. Active tasks
         active = sum(1 for s in self._sender_tasks.values()
                      if s.get("task") and not s["task"].done())
         lines.append(f"Active tasks: {active}")
