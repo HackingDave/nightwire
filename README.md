@@ -89,7 +89,7 @@ cd nightwire
 ./install.sh
 ```
 
-The installer walks you through everything: Python venv setup, phone number, Signal pairing (scan a QR code), and starting the service. No manual setup needed.
+The installer walks you through everything: Python venv setup, phone number, Signal device name, Signal pairing (scan a QR code), and starting the service. No manual setup needed.
 
 For a minimal-prompt install, use `--quick` with your phone number:
 
@@ -106,7 +106,10 @@ The installer supports flags for advanced usage:
 ./install.sh --skip-systemd       # Skip service installation
 ./install.sh --restart            # Restart the nightwire service
 ./install.sh --uninstall          # Remove nightwire service and containers
+./install.sh --help               # Show all available flags
 ```
+
+During interactive install, you'll be prompted for a **device name** (default: `nightwire`) — this is the name shown in Signal's **Settings → Linked Devices** list. In `--quick` mode, it defaults to `nightwire` automatically.
 
 ## Requirements
 
@@ -348,6 +351,7 @@ nightwire_assistant:
 
 | Command | Description |
 |---------|-------------|
+| `/diagnose` | Run a system health check (Signal API, WebSocket, Docker container, active tasks) |
 | `/cooldown` | Show current rate limit cooldown status |
 | `/cooldown clear` | Manually end an active cooldown and resume operations |
 | `/cooldown test` | Activate a 2-minute test cooldown (for verification) |
@@ -509,6 +513,8 @@ projects:
 **Per-user project scoping:** Each phone number has its own active project selection, so multiple users can work on different projects simultaneously. Projects without `allowed_numbers` are visible to everyone. Projects with `allowed_numbers` are only shown in `/projects` and selectable via `/select` for listed numbers.
 
 ## Running
+
+When the bot starts and connects to Signal, it sends a "Nightwire v{version} started and ready." notification to all authorized users. This fires once per startup (not on reconnects).
 
 ### Manual Start
 

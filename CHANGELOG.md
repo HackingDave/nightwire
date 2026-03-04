@@ -5,6 +5,13 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.15] - 2026-03-04
+
+### Changed
+- README: Added `/diagnose` command to System commands reference
+- README: Documented startup ready notification behavior
+- README: Documented device name prompt during install and `--help` flag
+
 ## [2.5.14] - 2026-03-04
 
 ### Fixed
