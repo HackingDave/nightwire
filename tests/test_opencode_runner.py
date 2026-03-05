@@ -107,6 +107,8 @@ def test_default_runner_keeps_claude_command(monkeypatch):
         "--verbose",
         "--max-turns",
         "8",
+        "--settings",
+        '{"sandbox": {"enabled": false}}',
     ]
 
 
@@ -212,13 +214,28 @@ def test_extract_opencode_text_mixed_lines_and_nested_string_content(monkeypatch
             "garbage",
             "",
             json.dumps({"type": "text", "text": "line 1"}),
-            json.dumps({"type": "content", "content": ["line 2", {"type": "text", "text": "line 3"}]}),
+            json.dumps(
+                {"type": "content", "content": ["line 2", {"type": "text", "text": "line 3"}]}
+            ),
             "   ",
             json.dumps({"type": "assistant_message", "message": {"content": ["line 4"]}}),
         ]
     )
 
     assert runner._extract_opencode_text(output) == "line 1\nline 2\nline 3\nline 4"
+
+
+def test_extract_opencode_text_from_part_text_events(monkeypatch):
+    runner = _make_runner(monkeypatch, runner_type="opencode", runner_path="opencode")
+    output = "\n".join(
+        [
+            json.dumps({"type": "step_start", "part": {"type": "step-start"}}),
+            json.dumps({"type": "text", "part": {"type": "text", "text": "line from part"}}),
+            json.dumps({"type": "step_finish", "part": {"type": "step-finish", "reason": "stop"}}),
+        ]
+    )
+
+    assert runner._extract_opencode_text(output) == "line from part"
 
 
 def test_extract_opencode_text_assistant_message_non_dict_is_skipped(monkeypatch):
@@ -250,7 +267,12 @@ def test_extract_opencode_text_only_tool_use_events_returns_empty(monkeypatch):
     output = "\n".join(
         [
             json.dumps({"type": "content", "content": [{"type": "tool_use", "name": "a"}]}),
-            json.dumps({"type": "assistant_message", "message": {"content": [{"type": "tool_use", "name": "b"}]}}),
+            json.dumps(
+                {
+                    "type": "assistant_message",
+                    "message": {"content": [{"type": "tool_use", "name": "b"}]},
+                }
+            ),
         ]
     )
 
@@ -322,7 +344,9 @@ async def test_execute_once_opencode_success_uses_extracted_output(monkeypatch, 
 
     extract_mock = MagicMock(return_value="parsed output")
     monkeypatch.setattr(runner, "_extract_opencode_text", extract_mock)
-    monkeypatch.setattr("nightwire.claude_runner.asyncio.create_subprocess_exec", _fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        "nightwire.claude_runner.asyncio.create_subprocess_exec", _fake_create_subprocess_exec
+    )
 
     success, message, category = await runner._execute_claude_once(
         cmd=["opencode", "run"],
@@ -358,7 +382,9 @@ async def test_execute_once_claude_success_returns_raw_output(monkeypatch, tmp_p
 
     extract_mock = MagicMock(return_value="parsed output")
     monkeypatch.setattr(runner, "_extract_opencode_text", extract_mock)
-    monkeypatch.setattr("nightwire.claude_runner.asyncio.create_subprocess_exec", _fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        "nightwire.claude_runner.asyncio.create_subprocess_exec", _fake_create_subprocess_exec
+    )
 
     success, message, category = await runner._execute_claude_once(
         cmd=["claude", "--print"],
@@ -376,7 +402,9 @@ async def test_execute_once_claude_success_returns_raw_output(monkeypatch, tmp_p
 # Section: Signal-path simulation (end-to-end)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sandbox_enabled", [False, True])
-async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(monkeypatch, tmp_path, sandbox_enabled):
+async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(
+    monkeypatch, tmp_path, sandbox_enabled
+):
     cfg = SimpleNamespace(
         config_dir=tmp_path,
         runner_type="opencode",
@@ -428,6 +456,7 @@ async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(monkeypatc
     bot.project_manager = SimpleNamespace(
         get_current_project=lambda _sender: "demo-project",
         get_current_path=lambda _sender: tmp_path,
+        get_project_path=lambda _name: tmp_path,
     )
     bot.memory = SimpleNamespace(
         store_message=AsyncMock(return_value=None),
@@ -443,8 +472,11 @@ async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(monkeypatc
     original_start_background_task = SignalBot._start_background_task
 
     def _capture_background_task(self, sender, task_description, project_name, image_paths=None):
-        original_start_background_task(self, sender, task_description, project_name, image_paths=image_paths)
-        started_task["task"] = self._sender_tasks[sender]["task"]
+        original_start_background_task(
+            self, sender, task_description, project_name, image_paths=image_paths
+        )
+        task_key = (sender, project_name)
+        started_task["task"] = self._sender_tasks[task_key]["task"]
 
     bot._start_background_task = MethodType(_capture_background_task, bot)
 
@@ -464,7 +496,7 @@ async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(monkeypatc
     else:
         assert cmd[:2] == ["docker", "run"]
         opencode_idx = cmd.index("/usr/local/bin/opencode")
-        assert cmd[opencode_idx:opencode_idx + 5] == [
+        assert cmd[opencode_idx : opencode_idx + 5] == [
             "/usr/local/bin/opencode",
             "run",
             "--format",

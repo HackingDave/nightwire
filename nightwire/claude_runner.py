@@ -132,6 +132,8 @@ class ClaudeRunner:
             "--verbose",
             "--max-turns",
             str(self.config.claude_max_turns),
+            "--settings",
+            '{"sandbox": {"enabled": false}}',
         ]
 
     def _build_subprocess_env(self) -> dict:
@@ -190,6 +192,9 @@ class ClaudeRunner:
             if event_type == "text":
                 if isinstance(event.get("text"), str):
                     text_parts.append(event["text"])
+                part = event.get("part")
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    text_parts.append(part["text"])
             elif event_type == "content":
                 append_content_parts(event.get("content"))
             elif event_type == "assistant_message":
@@ -469,7 +474,7 @@ class ClaudeRunner:
                 if extracted:
                     result = extracted
 
-            return True, result, ErrorCategory.TRANSIENT
+            return True, result, ErrorCategory.PERMANENT
 
         except FileNotFoundError:
             runner_name = "OpenCode" if self.config.runner_type == "opencode" else "Claude"
