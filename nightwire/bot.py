@@ -881,7 +881,7 @@ class SignalBot:
                 return
             self._processed_messages[msg_hash] = _time.time()
 
-            cutoff = _time.time() - 60
+            cutoff = _time.time() - 120
             while self._processed_messages:
                 oldest_key, oldest_time = next(
                     iter(self._processed_messages.items())

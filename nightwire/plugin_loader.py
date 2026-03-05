@@ -148,6 +148,12 @@ class PluginLoader:
         # Import the module
         module_name = f"{plugin_name}.plugin"
         spec = importlib.util.spec_from_file_location(module_name, plugin_file)
+        if spec is None or spec.loader is None:
+            logger.warning(
+                "plugin_spec_failed",
+                plugin=plugin_name, path=str(plugin_file),
+            )
+            return
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)

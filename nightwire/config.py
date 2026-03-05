@@ -140,24 +140,32 @@ class Config:
     def logging_level(self) -> str:
         """Global log level (default INFO). Controls console and combined file."""
         log_config = self.settings.get("logging", {})
+        if not isinstance(log_config, dict):
+            return "INFO"
         return log_config.get("level", "INFO")
 
     @property
     def logging_subsystem_levels(self) -> dict:
         """Per-subsystem log level overrides. E.g. {"autonomous": "DEBUG"}."""
         log_config = self.settings.get("logging", {})
+        if not isinstance(log_config, dict):
+            return {}
         return log_config.get("subsystem_levels", {})
 
     @property
     def logging_max_file_size_mb(self) -> int:
         """Max size per log file in MB before rotation (default 10)."""
         log_config = self.settings.get("logging", {})
+        if not isinstance(log_config, dict):
+            return 10
         return log_config.get("max_file_size_mb", 10)
 
     @property
     def logging_backup_count(self) -> int:
         """Number of rotated log files to keep (default 5)."""
         log_config = self.settings.get("logging", {})
+        if not isinstance(log_config, dict):
+            return 5
         return log_config.get("backup_count", 5)
 
     @property

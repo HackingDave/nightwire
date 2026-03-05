@@ -78,34 +78,36 @@ class MessageQueue:
 
         Processes messages from the recipient's queue until the queue
         is idle for 30 seconds. Rate limiting enforces minimum interval
-        between sends.
+        between sends. Uses try/finally to ensure cleanup runs even
+        when cancelled during shutdown.
         """
         queue = self._queues[recipient]
-        while self._running or not queue.empty():
-            try:
-                message = await asyncio.wait_for(queue.get(), timeout=30.0)
-            except asyncio.TimeoutError:
-                if queue.empty():
-                    break
-                continue
+        try:
+            while self._running or not queue.empty():
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    if queue.empty():
+                        break
+                    continue
 
-            now = asyncio.get_running_loop().time()
-            last = self._rate_limiters.get(recipient, 0.0)
-            min_interval = 1.0 / self._config.signal_send_rate_per_second
-            wait = max(0.0, min_interval - (now - last))
-            if wait > 0:
-                await asyncio.sleep(wait)
+                now = asyncio.get_running_loop().time()
+                last = self._rate_limiters.get(recipient, 0.0)
+                min_interval = 1.0 / self._config.signal_send_rate_per_second
+                wait = max(0.0, min_interval - (now - last))
+                if wait > 0:
+                    await asyncio.sleep(wait)
 
-            await self._send_with_retry(recipient, message)
-            self._rate_limiters[recipient] = asyncio.get_running_loop().time()
-
-        # Identity-based cleanup: only remove if we're still the active consumer
-        async with self._lock:
-            if self._queues.get(recipient) is queue:
-                del self._queues[recipient]
-            if self._consumers.get(recipient) is asyncio.current_task():
-                del self._consumers[recipient]
-            self._rate_limiters.pop(recipient, None)
+                await self._send_with_retry(recipient, message)
+                self._rate_limiters[recipient] = asyncio.get_running_loop().time()
+        finally:
+            # Identity-based cleanup: runs even on CancelledError
+            async with self._lock:
+                if self._queues.get(recipient) is queue:
+                    del self._queues[recipient]
+                if self._consumers.get(recipient) is asyncio.current_task():
+                    del self._consumers[recipient]
+                self._rate_limiters.pop(recipient, None)
 
     async def _send_with_retry(self, recipient: str, message: str) -> bool:
         """Send HTTP POST with exponential backoff retry.

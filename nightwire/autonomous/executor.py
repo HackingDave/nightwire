@@ -189,6 +189,7 @@ class TaskExecutor:
 
         Returns True if checkpoint was created, False otherwise.
         """
+        active_proc = None
         try:
             async with _get_git_lock(str(project_path)):
                 # Check if there are uncommitted changes
@@ -198,6 +199,7 @@ class TaskExecutor:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                active_proc = proc
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
                 changes = stdout.decode().strip()
 
@@ -209,6 +211,7 @@ class TaskExecutor:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
+                    active_proc = add_proc
                     await asyncio.wait_for(add_proc.communicate(), timeout=60)
                     safe_title = (
                         task.title[:50]
@@ -224,6 +227,7 @@ class TaskExecutor:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
+                    active_proc = proc
                     await asyncio.wait_for(proc.communicate(), timeout=30)
                     logger.info("git_checkpoint_created", task_id=task.id)
                     return True
@@ -231,6 +235,12 @@ class TaskExecutor:
                 return False
 
         except (OSError, asyncio.TimeoutError, RuntimeError) as e:
+            if active_proc and active_proc.returncode is None:
+                try:
+                    active_proc.kill()
+                    await active_proc.wait()
+                except ProcessLookupError:
+                    pass
             raise GitCheckpointError(
                 f"Git checkpoint failed: {e}", task_id=task.id
             ) from e
@@ -241,6 +251,7 @@ class TaskExecutor:
         Uses the global git lock for thread safety.
         Returns True if changes were committed.
         """
+        active_proc = None
         try:
             async with _get_git_lock(str(project_path)):
                 proc = await asyncio.create_subprocess_exec(
@@ -249,6 +260,7 @@ class TaskExecutor:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                active_proc = proc
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
                 changes = stdout.decode().strip()
 
@@ -262,6 +274,7 @@ class TaskExecutor:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                active_proc = add_proc
                 await asyncio.wait_for(add_proc.communicate(), timeout=60)
 
                 # Commit with task context
@@ -279,11 +292,18 @@ class TaskExecutor:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                active_proc = proc
                 await asyncio.wait_for(proc.communicate(), timeout=30)
                 logger.info("git_task_committed", task_id=task.id)
                 return True
 
         except (OSError, asyncio.TimeoutError, RuntimeError) as e:
+            if active_proc and active_proc.returncode is None:
+                try:
+                    active_proc.kill()
+                    await active_proc.wait()
+                except ProcessLookupError:
+                    pass
             raise GitCommitError(
                 f"Git commit failed: {e}", task_id=task.id
             ) from e
@@ -849,6 +869,7 @@ class TaskExecutor:
         commit diff (task may already be committed at this point).
         """
         files = set()
+        active_proc = None
         try:
             async with _get_git_lock(str(project_path)):
                 # Check uncommitted changes
@@ -858,6 +879,7 @@ class TaskExecutor:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                active_proc = proc
                 stdout, _ = await asyncio.wait_for(
                     proc.communicate(), timeout=15
                 )
@@ -873,6 +895,7 @@ class TaskExecutor:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
+                    active_proc = proc
                     stdout, _ = await asyncio.wait_for(
                         proc.communicate(), timeout=15
                     )
@@ -881,6 +904,12 @@ class TaskExecutor:
                             files.add(line.strip())
 
         except (asyncio.TimeoutError, FileNotFoundError, OSError) as e:
+            if active_proc and active_proc.returncode is None:
+                try:
+                    active_proc.kill()
+                    await active_proc.wait()
+                except ProcessLookupError:
+                    pass
             logger.debug("git_diff_name_only_failed", error=str(e))
 
         return sorted(files)

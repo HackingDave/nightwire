@@ -18,6 +18,9 @@ import structlog
 
 from .config import get_config
 
+# Unicode bidi override characters — checked in sanitize_input() hot path
+_BIDI_CHARS = frozenset('\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069')
+
 logger = structlog.get_logger("nightwire.security")
 
 # Simple in-memory rate limiter
@@ -207,7 +210,6 @@ def sanitize_input(text: str) -> str:
         if ch in ('\n', '\r', '\t') or not unicodedata.category(ch).startswith('C')
     )
     # Remove Unicode bidi override characters
-    _BIDI_CHARS = set('\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069')
     text = ''.join(ch for ch in text if ch not in _BIDI_CHARS)
     max_length = 10000
     if len(text) > max_length:

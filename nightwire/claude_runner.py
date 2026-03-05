@@ -234,9 +234,14 @@ class ClaudeRunner:
             cmd.extend(["--json-schema", json_schema])
         if resume_session_id:
             cmd.extend(["--resume", resume_session_id])
-        max_turns = self.config.settings.get("claude_max_turns")
-        if max_turns:
-            cmd.extend(["--max-turns", str(max_turns)])
+        raw_turns = self.config.settings.get("claude_max_turns")
+        if raw_turns is not None:
+            try:
+                max_turns = int(raw_turns)
+                if max_turns > 0:
+                    cmd.extend(["--max-turns", str(max_turns)])
+            except (ValueError, TypeError):
+                pass
         budget = self.config.claude_max_budget_usd
         if budget is not None:
             cmd.extend(["--max-budget-usd", str(budget)])
@@ -665,7 +670,10 @@ class ClaudeRunner:
                     )
                 )
             except asyncio.TimeoutError:
-                process.kill()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
                 await process.wait()
                 elapsed = int(
                     (time.monotonic() - start_time) / 60
@@ -682,7 +690,10 @@ class ClaudeRunner:
                     ErrorCategory.TRANSIENT,
                 )
             except asyncio.CancelledError:
-                process.kill()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
                 await process.wait()
                 logger.info("claude_cancelled_during_execution")
                 return (
@@ -977,7 +988,10 @@ class ClaudeRunner:
                     read_ndjson_stream(), timeout=timeout,
                 )
             except asyncio.TimeoutError:
-                process.kill()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
                 await process.wait()
                 stderr_task.cancel()
                 elapsed = int(
@@ -997,7 +1011,10 @@ class ClaudeRunner:
                 inv_state.process = None
 
             if inv_state.cancelled:
-                process.kill()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
                 await process.wait()
                 stderr_task.cancel()
                 logger.info(

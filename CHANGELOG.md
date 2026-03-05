@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `config.py`: Clamp `signal_send_rate_per_second` to minimum 0.01 — prevents `ZeroDivisionError` in message queue consumer
 - `task_manager.py`: Clean up orphaned temp file on `save_interrupted_tasks` failure
 - `bot.py`: Initialize `source = None` before try block in message handler — prevents `UnboundLocalError` on malformed messages
+- `autonomous/executor.py`: Kill orphaned git subprocesses on timeout using `active_proc` tracking pattern — covers `_git_save_checkpoint`, `_git_commit_task_changes`, `_get_files_changed`
+- `claude_runner.py`: Added `ProcessLookupError` guards to all 4 `process.kill()` sites (timeout and cancel handlers in both `_execute_once` and `_execute_once_streaming`)
+- `claude_runner.py`: Type-safe `claude_max_turns` parsing with `int()` conversion and `ValueError`/`TypeError` handling
+- `message_queue.py`: Consumer loop uses `try/finally` to ensure cleanup runs even on `CancelledError` during shutdown
+- `bot.py`: Dedup window increased from 60s to 120s to match handler timeout — prevents duplicate processing on Signal retries
+- `config.py`: Added `isinstance` non-dict protection to all 4 logging config properties — prevents `AttributeError` on misconfigured `logging:` section
+- `security.py`: Moved `_BIDI_CHARS` to module-level `frozenset` — eliminates per-call `set()` allocation on hot path
+- `plugin_loader.py`: Added null check for `spec.loader` before `exec_module()` — prevents confusing `AttributeError` on broken plugin files
 
 ## [3.5.0] - 2026-03-05
 
