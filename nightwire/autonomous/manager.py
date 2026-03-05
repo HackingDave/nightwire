@@ -106,6 +106,28 @@ class AutonomousManager:
         """Get current loop status."""
         return await self.loop.get_status()
 
+    async def stop_worker(self, task_id: int) -> bool:
+        """Cancel a specific active worker.
+
+        Args:
+            task_id: ID of the task whose worker to stop.
+
+        Returns:
+            True if worker was found and cancelled.
+        """
+        return await self.loop.stop_worker(task_id)
+
+    async def restart_task(self, task_id: int) -> Optional[str]:
+        """Re-queue a failed/cancelled/blocked task.
+
+        Args:
+            task_id: ID of the task to restart.
+
+        Returns:
+            None on success, or an error message string.
+        """
+        return await self.loop.restart_task(task_id)
+
     # ========== PRD Management ==========
 
     async def create_prd(

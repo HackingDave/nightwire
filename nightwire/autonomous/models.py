@@ -348,11 +348,53 @@ class AutonomousContext(BaseModel):
     token_count: int = Field(default=0, description="Approximate token count")
 
 
+class WorkerStatus(BaseModel):
+    """Status of an active autonomous worker.
+
+    Populated by ``AutonomousLoop.get_status()`` from internal
+    tracking data. Provides per-worker visibility into task
+    execution progress and circuit breaker state.
+    """
+
+    task_id: int = Field(..., description="Task being executed")
+    task_title: str = Field(..., description="Title of the task")
+    project_name: str = Field(..., description="Project the task belongs to")
+    started_at: datetime = Field(..., description="When execution started")
+    elapsed_seconds: float = Field(default=0.0, description="Seconds since start")
+    task_type: str = Field(
+        default="implementation", description="Detected TaskType value"
+    )
+    consecutive_type_failures: int = Field(
+        default=0,
+        description="Consecutive failures for this task's type (from circuit breaker)",
+    )
+
+
+class CircuitBreakerState(BaseModel):
+    """Per-task-type circuit breaker state.
+
+    Tracks consecutive failures for a TaskType. When failures
+    exceed the configured threshold, the breaker opens and tasks
+    of that type are skipped (left in QUEUED) until the breaker
+    auto-resets after the configured cooldown period.
+    """
+
+    task_type: str = Field(..., description="TaskType value")
+    consecutive_failures: int = Field(default=0, description="Consecutive failures")
+    is_open: bool = Field(default=False, description="True = tripped, rejecting tasks")
+    opened_at: Optional[datetime] = Field(
+        default=None, description="When the breaker was opened"
+    )
+    last_failure_at: Optional[datetime] = Field(
+        default=None, description="When the last failure occurred"
+    )
+
+
 class LoopStatus(BaseModel):
     """Status snapshot of the autonomous processing loop.
 
     Returned by ``AutonomousLoop.get_status()`` for the
-    ``/autonomous status`` Signal command.
+    ``/autonomous status`` and ``/monitor`` Signal commands.
     """
 
     is_running: bool = Field(default=False, description="Whether loop is active")
@@ -369,6 +411,16 @@ class LoopStatus(BaseModel):
     tasks_failed_today: int = Field(default=0, description="Tasks failed today")
     last_task_completed_at: Optional[datetime] = None
     uptime_seconds: float = Field(default=0.0, description="Loop uptime")
+    worker_statuses: List[WorkerStatus] = Field(
+        default_factory=list, description="Active worker details"
+    )
+    total_errors: int = Field(default=0, description="Total errors since start")
+    error_types: dict[str, int] = Field(
+        default_factory=dict, description="Error counts by exception type"
+    )
+    circuit_breakers: List[CircuitBreakerState] = Field(
+        default_factory=list, description="Circuit breaker states by task type"
+    )
 
 
 # ---------------------------------------------------------------------------

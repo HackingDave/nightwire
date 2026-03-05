@@ -471,6 +471,24 @@ class Config:
         user_levels = auto_config.get("effort_levels", {})
         return {**defaults, **user_levels}
 
+    @property
+    def autonomous_stuck_task_timeout_minutes(self) -> int:
+        """Minutes before an in-progress task is considered stuck (default 60)."""
+        auto_config = self.settings.get("autonomous", {})
+        return auto_config.get("stuck_task_timeout_minutes", 60)
+
+    @property
+    def autonomous_circuit_breaker_threshold(self) -> int:
+        """Consecutive failures before pausing a task type (default 3)."""
+        auto_config = self.settings.get("autonomous", {})
+        return auto_config.get("circuit_breaker_threshold", 3)
+
+    @property
+    def autonomous_circuit_breaker_reset_minutes(self) -> int:
+        """Minutes before a tripped circuit breaker auto-resets (default 30)."""
+        auto_config = self.settings.get("autonomous", {})
+        return auto_config.get("circuit_breaker_reset_minutes", 30)
+
     # Auto-update configuration
     @property
     def auto_update_enabled(self) -> bool:

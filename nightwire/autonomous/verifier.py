@@ -240,7 +240,10 @@ class VerificationAgent:
                 timeout=timeout,
             )
             if not success or not isinstance(result, VerificationOutput):
-                logger.debug("verification_structured_fallback")
+                logger.info(
+                    "structured_parse_fallback",
+                    component="verifier",
+                )
                 return None
 
             # Fail-closed: override passed if critical issues exist

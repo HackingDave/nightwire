@@ -521,7 +521,12 @@ class TaskExecutor:
                 # Capture learning extraction usage before it's overwritten
                 if runner.last_usage:
                     usage_records.append(runner.last_usage.copy())
-            except Exception:
+            except Exception as exc:
+                logger.info(
+                    "structured_parse_fallback",
+                    component="learnings",
+                    error=str(exc)[:100],
+                )
                 learnings = await self.learning_extractor.extract(task, result)
 
             result.usage_data = usage_records or None

@@ -1031,6 +1031,23 @@ class AutonomousDatabase:
         )
         self._conn.commit()
 
+    async def reset_retry_count(self, task_id: int) -> None:
+        """Reset task retry count to 0.
+
+        Used by ``/worker restart`` to give a task a fresh start.
+
+        Args:
+            task_id: Database ID of the task.
+        """
+        await asyncio.to_thread(self._reset_retry_count_sync, task_id)
+
+    def _reset_retry_count_sync(self, task_id: int) -> None:
+        cursor = self._conn.cursor()
+        cursor.execute(
+            "UPDATE tasks SET retry_count = 0 WHERE id = ?", (task_id,)
+        )
+        self._conn.commit()
+
     async def queue_tasks_for_story(self, story_id: int) -> int:
         """Queue all pending tasks for a story.
 

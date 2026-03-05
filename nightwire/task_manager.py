@@ -572,7 +572,11 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 )
 
             # Fallback: text mode + parse_prd_json
-            logger.info("prd_structured_fallback", reason=str(result)[:200])
+            logger.info(
+                "structured_parse_fallback",
+                component="prd_builder",
+                reason=str(result)[:200],
+            )
             await update_step("Retrying with text mode...")
             success, response = await self.runner.run_claude(
                 fallback_prompt,

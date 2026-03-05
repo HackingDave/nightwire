@@ -66,6 +66,8 @@ class CoreCommandHandler(BaseCommandHandler):
             "global": self.handle_global,
             "diagnose": self.handle_diagnose,
             "usage": self.handle_usage,
+            "monitor": self.handle_monitor,
+            "worker": self.handle_worker,
         }
 
     def get_help_metadata(self):
@@ -159,6 +161,16 @@ class CoreCommandHandler(BaseCommandHandler):
                 "View token usage and cost tracking",
                 "/usage [project|all]",
                 ["/usage", "/usage project", "/usage all"],
+            ),
+            "monitor": HelpMetadata(
+                "Show autonomous loop status, workers, and errors",
+                "/monitor",
+                ["/monitor"],
+            ),
+            "worker": HelpMetadata(
+                "Control individual autonomous workers",
+                "/worker <list|stop|restart> [task_id]",
+                ["/worker list", "/worker stop 42", "/worker restart 42"],
             ),
         }
 
@@ -845,6 +857,219 @@ class CoreCommandHandler(BaseCommandHandler):
         ]
         return "\n".join(lines)
 
+    # --- Monitoring commands ---
+
+    async def handle_monitor(self, sender: str, args: str) -> str:
+        """Show autonomous loop status, active workers, and error counts.
+
+        Signal usage::
+
+            /monitor
+
+        Args:
+            sender: Phone number or UUID of the message sender.
+            args: Unused.
+
+        Returns:
+            Formatted monitoring output.
+        """
+        try:
+            status = await self.ctx.autonomous_manager.get_loop_status()
+        except RuntimeError:
+            return "Autonomous system not available."
+
+        # Loop state
+        if status.is_paused:
+            state = "PAUSED"
+        elif status.is_running:
+            state = "RUNNING"
+        else:
+            state = "STOPPED"
+
+        # Uptime formatting
+        uptime_str = self._format_duration(status.uptime_seconds)
+
+        lines = [
+            "Bot Monitor",
+            "\u2501" * 20,
+            f"Loop: {state} | Uptime: {uptime_str}",
+            (
+                f"Workers: {len(status.worker_statuses)}/{status.max_parallel}"
+                f" active | Queue: {status.tasks_queued} tasks"
+            ),
+        ]
+
+        # Active workers
+        if status.worker_statuses:
+            lines.append("")
+            lines.append("Active Workers:")
+            for ws in status.worker_statuses:
+                elapsed = self._format_duration(ws.elapsed_seconds)
+                cb_info = ""
+                if ws.consecutive_type_failures > 0:
+                    cb_info = (
+                        f" [!{ws.consecutive_type_failures} failures]"
+                    )
+                lines.append(
+                    f"  #{ws.task_id} \"{ws.task_title}\""
+                    f" ({ws.project_name})"
+                    f" \u2014 {elapsed}{cb_info}"
+                )
+
+        # Daily counters
+        lines.append("")
+        lines.append(
+            f"Today: {status.tasks_completed_today} completed,"
+            f" {status.tasks_failed_today} failed"
+        )
+
+        # Last completion
+        if status.last_task_completed_at:
+            ago = (
+                datetime.now() - status.last_task_completed_at
+            ).total_seconds()
+            lines.append(
+                f"Last completion: {self._format_duration(ago)} ago"
+            )
+
+        # Error counts
+        if status.total_errors > 0:
+            error_parts = [f"{status.total_errors} total"]
+            for err_type, count in sorted(
+                status.error_types.items(), key=lambda x: -x[1],
+            )[:3]:
+                error_parts.append(f"{err_type}: {count}")
+            lines.append(f"Errors: {', '.join(error_parts)}")
+
+        # Circuit breakers
+        open_breakers = [
+            cb for cb in status.circuit_breakers if cb.is_open
+        ]
+        if open_breakers:
+            lines.append("")
+            lines.append("Circuit Breakers (OPEN):")
+            for cb in open_breakers:
+                lines.append(
+                    f"  {cb.task_type}:"
+                    f" {cb.consecutive_failures} consecutive failures"
+                )
+
+        return "\n".join(lines)
+
+    async def handle_worker(self, sender: str, args: str) -> str:
+        """Control individual autonomous workers.
+
+        Signal usage::
+
+            /worker list
+            /worker stop 42
+            /worker restart 42
+
+        Args:
+            sender: Phone number or UUID of the message sender.
+            args: Subcommand and optional task ID.
+
+        Returns:
+            Result message.
+        """
+        parts = args.strip().split(None, 1)
+        if not parts:
+            return (
+                "Usage: /worker <list|stop|restart> [task_id]\n"
+                "  /worker list — show active workers\n"
+                "  /worker stop <id> — cancel a running task\n"
+                "  /worker restart <id> — re-queue a failed task"
+            )
+
+        subcommand = parts[0].lower()
+        task_id_str = parts[1].strip() if len(parts) > 1 else ""
+
+        if subcommand == "list":
+            return await self._worker_list()
+        elif subcommand == "stop":
+            return await self._worker_stop(task_id_str)
+        elif subcommand == "restart":
+            return await self._worker_restart(task_id_str)
+        else:
+            return (
+                f"Unknown subcommand: {subcommand}\n"
+                "Use: /worker list|stop|restart"
+            )
+
+    async def _worker_list(self) -> str:
+        """List active workers."""
+        try:
+            status = await self.ctx.autonomous_manager.get_loop_status()
+        except RuntimeError:
+            return "Autonomous system not available."
+
+        if not status.worker_statuses:
+            return "No active workers."
+
+        lines = [
+            f"Active Workers ({len(status.worker_statuses)}"
+            f"/{status.max_parallel}):",
+        ]
+        for ws in status.worker_statuses:
+            elapsed = self._format_duration(ws.elapsed_seconds)
+            lines.append(
+                f"  #{ws.task_id} \"{ws.task_title}\""
+                f" ({ws.project_name}) \u2014 {elapsed}"
+            )
+        return "\n".join(lines)
+
+    async def _worker_stop(self, task_id_str: str) -> str:
+        """Stop a specific worker."""
+        if not task_id_str:
+            return "Usage: /worker stop <task_id>"
+
+        try:
+            task_id = int(task_id_str)
+        except ValueError:
+            return f"Invalid task ID: {task_id_str}"
+
+        try:
+            stopped = await self.ctx.autonomous_manager.stop_worker(task_id)
+        except RuntimeError:
+            return "Autonomous system not available."
+
+        if stopped:
+            return f"Worker for task #{task_id} stopped."
+        return f"No active worker found for task #{task_id}."
+
+    async def _worker_restart(self, task_id_str: str) -> str:
+        """Restart a failed/cancelled task."""
+        if not task_id_str:
+            return "Usage: /worker restart <task_id>"
+
+        try:
+            task_id = int(task_id_str)
+        except ValueError:
+            return f"Invalid task ID: {task_id_str}"
+
+        try:
+            error = await self.ctx.autonomous_manager.restart_task(task_id)
+        except RuntimeError:
+            return "Autonomous system not available."
+
+        if error is None:
+            return f"Task #{task_id} restarted (re-queued)."
+        return error
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format seconds into human-readable duration."""
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds}s"
+        minutes = seconds // 60
+        secs = seconds % 60
+        if minutes < 60:
+            return f"{minutes}m {secs:02d}s"
+        hours = minutes // 60
+        mins = minutes % 60
+        return f"{hours}h {mins:02d}m"
+
     # --- Helper methods ---
 
     def _is_nightwire_query(self, message: str) -> bool:
@@ -982,6 +1207,11 @@ Memory:
   /global <cmd> - Cross-project memory commands"""
 
         help_text += """
+
+Monitoring:
+  /monitor - Show loop status, workers, and errors
+  /worker list|stop|restart <id> - Control workers
+  /usage [project|all] - Token usage and costs
 
 System:
   /cooldown [status|clear|test] - Rate limit cooldown info/control
