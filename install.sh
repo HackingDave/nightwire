@@ -801,7 +801,7 @@ cat << 'EOF'
 EOF
 echo -e "${NC}"
 echo -e "  ${GREEN}Signal + Claude AI Bot${NC} — v${VERSION}"
-echo -e "  By ${CYAN}offsecginger${NC} — ${CYAN}https://github.com/offsecginger/nightwire${NC}"
+echo -e "  By ${CYAN}HackingDave${NC} — ${CYAN}https://github.com/HackingDave/nightwire${NC}"
 echo ""
 
 # -----------------------------------------------------------------------------
@@ -1717,5 +1717,5 @@ fi
 
 echo ""
 echo -e "  Config:  ${CYAN}$CONFIG_DIR/settings.yaml${NC}"
-echo -e "  Docs:    ${CYAN}https://github.com/offsecginger/nightwire${NC}"
+echo -e "  Docs:    ${CYAN}https://github.com/HackingDave/nightwire${NC}"
 echo ""

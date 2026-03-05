@@ -13,7 +13,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do NOT open a public issue**
-2. Email: [create a GitHub Security Advisory](https://github.com/offsecginger/nightwire/security/advisories/new)
+2. Email: [create a GitHub Security Advisory](https://github.com/HackingDave/nightwire/security/advisories/new)
 3. Include: description, steps to reproduce, potential impact, suggested fix (if any)
 
 You should receive a response within 48 hours. We will work with you to understand and address the issue before any public disclosure.
