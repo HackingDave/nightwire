@@ -62,3 +62,11 @@ signal-cli-config/
 
 # Patched signal-cli binary distribution (~237MB)
 signal-cli-[0-9]*/
+
+# Local planning and issue tracking notes
+IDEAS.md
+ISSUES.md
+PLAN.md
+
+# Local lockfile from uv usage
+uv.lock
