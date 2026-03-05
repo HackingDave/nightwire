@@ -5,7 +5,19 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.5.1] - 2026-03-05
+## [3.0.0] - 2026-03-05
+
+### Fixed — Production Testing
+
+- `scripts/apply-signal-patches.sh`: Fixed git file mode from 100644 to 100755 — `install.sh` checks `[ -x ]` which requires execute permission, blocking Signal device pairing entirely on fresh installs
+- `logging_config.py`: Replaced structlog double-rendering architecture with proper `ProcessorFormatter.wrap_for_formatter` pattern — file handlers now produce clean plain-text logs without ANSI escape codes or junk metadata
+- Aligned version to 3.0.0 across `install.sh`, `pyproject.toml`, `__init__.py`, and `CLAUDE.md`
+- `install.sh`: Fixed repository URLs to point to offsecginger/nightwire fork (author attribution preserved)
+- `pyproject.toml`: Fixed Repository and Bug Tracker URLs to point to offsecginger/nightwire fork
+- `SECURITY.md`: Fixed security advisory URL to point to offsecginger/nightwire fork
+- `bot.py`: Enhanced `no_accounts_registered` warning with actionable hint for users
+
+## [2.9.2] - 2026-03-05
 
 ### Fixed — Production Readiness Audit
 - `autonomous/loop.py`: Replaced deprecated `asyncio.ensure_future` with `asyncio.get_running_loop().create_task()` — eliminates DeprecationWarning, gracefully handles sync test contexts
@@ -30,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `security.py`: Moved `_BIDI_CHARS` to module-level `frozenset` — eliminates per-call `set()` allocation on hot path
 - `plugin_loader.py`: Added null check for `spec.loader` before `exec_module()` — prevents confusing `AttributeError` on broken plugin files
 
-## [3.5.0] - 2026-03-05
+## [2.9.1] - 2026-03-05
 
 ### Added — Milestones 10-11, 15
 - **Signal UX (M10)**: Per-recipient message queue with FIFO ordering, rate limiting, retry. Typing indicators. Autonomous notification debounce (critical vs non-critical split).
@@ -46,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `plugin_base.py`, `plugin_loader.py`: AgentSpec, agent collection, catalog generation
 - `task_manager.py`: Agent catalog callback, catalog concatenation
 
-## [3.2.0] - 2026-02-27
+## [2.9.0] - 2026-02-27
 
 ### Added — Milestone 8: Upstream Feature Port
 - **Image attachment processing** — Signal image attachments (JPEG, PNG, GIF, WebP) are downloaded, saved per-sender, and passed to Claude's agentic Read tool for multimodal analysis. Image-only messages default to "Describe this image."
@@ -67,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sandbox.py`: Default image changed from `python:3.11-slim` to `nightwire-sandbox:latest`
 - `SECURITY.md`: Added Docker sandbox hardening section
 
-## [3.1.0] - 2026-02-27
+## [2.8.0] - 2026-02-27
 
 ### Changed — Milestone 7: CLI Runner Migration
 - **Replaced Anthropic Python SDK with Claude Code CLI** — `claude -p` subprocess replaces `anthropic.AsyncAnthropic` for all Claude operations. Supports both Pro/Max OAuth login and API key authentication transparently.
@@ -86,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `classify_error_from_exception()` — SDK-era error classifier (deleted, not just deprecated)
 - `import anthropic` at module level in `claude_runner.py` and `haiku_summarizer.py`
 
-## [3.0.0] - 2026-02-27
+## [2.7.0] - 2026-02-27
 
 ### Changed — Milestone 1: Claude SDK Migration
 - **Replaced Claude CLI subprocess with Anthropic Python SDK** — `claude --print` subprocess calls replaced by `anthropic.AsyncAnthropic` with `client.messages.create()` and `client.messages.stream()`

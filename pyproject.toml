@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nightwire"
-version = "1.5.0"
+version = "3.0.0"
 description = "A Signal messaging bot with Claude AI integration for intelligent conversations and autonomous development"
 readme = "README.md"
 license = {text = "MIT"}
@@ -24,8 +24,8 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/HackingDave/nightwire"
-"Bug Tracker" = "https://github.com/HackingDave/nightwire/issues"
+Repository = "https://github.com/offsecginger/nightwire"
+"Bug Tracker" = "https://github.com/offsecginger/nightwire/issues"
 
 [project.scripts]
 nightwire = "nightwire.main:run"

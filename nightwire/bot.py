@@ -467,7 +467,11 @@ class SignalBot:
                             logger.info("account_found", account=self.account)
                             return
                         else:
-                            logger.warning("no_accounts_registered")
+                            logger.warning(
+                                "no_accounts_registered",
+                                hint="Pair a device via install.sh or the Signal "
+                                "bridge API, then restart the service.",
+                            )
                             return
                     else:
                         logger.warning("account_request_failed",

@@ -4,14 +4,20 @@ Provides subsystem-level log file routing, secret sanitization,
 and structlog + stdlib integration.
 
 Subsystem hierarchy (stdlib dotted names, structlog wraps them):
-    root              → ConsoleHandler (terminal)
-      └─ nightwire    → RotatingFileHandler → nightwire.log (combined)
+    root              → ConsoleHandler (terminal, colored)
+      └─ nightwire    → RotatingFileHandler → nightwire.log (combined, plain text)
            ├─ nightwire.bot        → RFH → bot.log
            ├─ nightwire.claude     → RFH → claude.log
            ├─ nightwire.autonomous → RFH → autonomous.log
            ├─ nightwire.memory     → RFH → memory.log
            ├─ nightwire.plugins    → RFH → plugins.log
            └─ nightwire.security   → RFH → security.log
+
+Architecture: structlog processors handle filtering, timestamping,
+and secret sanitization. ProcessorFormatter.wrap_for_formatter passes
+the event dict to stdlib handlers. Each handler's ProcessorFormatter
+does the final rendering — ConsoleRenderer(colors=True) for console,
+ConsoleRenderer(colors=False) for files.
 """
 
 import logging
@@ -94,12 +100,14 @@ def setup_logging(config=None) -> None:
     """Configure structured logging with subsystem file handlers.
 
     Sets up:
-    1. Root logger: ConsoleHandler (colorized, same as before)
-    2. "nightwire" logger: RotatingFileHandler → logs/nightwire.log
-    3. "nightwire.<subsystem>" loggers: individual RotatingFileHandlers
+    1. Root logger: ConsoleHandler (colorized via ProcessorFormatter)
+    2. "nightwire" logger: RotatingFileHandler → logs/nightwire.log (plain text)
+    3. "nightwire.<subsystem>" loggers: individual RotatingFileHandlers (plain text)
 
-    All subsystem loggers propagate up the hierarchy, so every event
-    appears in: its subsystem file + combined nightwire.log + console.
+    structlog processors handle filtering, timestamping, and secret
+    sanitization. ProcessorFormatter.wrap_for_formatter passes the event
+    dict to stdlib handlers. Each handler's ProcessorFormatter does the
+    final rendering — colors for console, plain text for files.
 
     Args:
         config: Optional Config instance. First call (before config loads)
@@ -137,29 +145,32 @@ def setup_logging(config=None) -> None:
             file=sys.stderr,
         )
 
-    # --- stdlib logger setup ---
-
-    # Shared formatter for file output (structured, no ANSI colors)
+    # --- Formatters ---
+    # File: plain text, no ANSI escape codes
     file_formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.dev.ConsoleRenderer(colors=False),
         ],
     )
 
-    # 1. Root logger: console only
+    # Console: colored output
+    console_formatter = structlog.stdlib.ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.dev.ConsoleRenderer(colors=True),
+        ],
+    )
+
+    # --- stdlib logger setup ---
+
+    # 1. Root logger: console only (colored via ProcessorFormatter)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)  # Handlers filter by level
     root_logger.handlers.clear()
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(root_level)
-    console_formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s"
-    )
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
@@ -201,6 +212,9 @@ def setup_logging(config=None) -> None:
             sub_logger.addHandler(sub_handler)
 
     # --- structlog configuration ---
+    # Processors handle filtering, timestamping, and sanitization.
+    # wrap_for_formatter passes the event dict to stdlib handlers
+    # for final rendering by each handler's ProcessorFormatter.
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,
@@ -212,7 +226,7 @@ def setup_logging(config=None) -> None:
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
             sanitize_secrets,
-            structlog.dev.ConsoleRenderer(),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
