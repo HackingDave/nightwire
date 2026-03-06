@@ -83,7 +83,7 @@ class AutonomousLoop:
         poll_interval: int = 30,
         max_parallel: int = 3,
         usage_recorder: Optional[Callable[..., Awaitable[None]]] = None,
-        debounce_seconds: float = 2.0,
+        debounce_seconds: float = 5.0,
         get_agent_definitions: Callable[[], Optional[str]] = lambda: None,
     ):
         """Initialize the autonomous loop.
@@ -696,42 +696,11 @@ class AutonomousLoop:
                 task.id, TaskStatus.IN_PROGRESS, started_at=datetime.now()
             )
 
-            # Get story and PRD info for context
-            story = await self.db.get_story(task.story_id)
-            prd_title = ""
-            story_progress = ""
-            if story:
-                prd = await self.db.get_prd(story.prd_id)
-                if prd:
-                    prd_title = f" ({prd.title})"
-                # Get task position in story
-                all_tasks = await self.db.list_tasks(
-                    story_id=task.story_id,
-                )
-                completed = sum(
-                    1 for t in all_tasks if t.completed_at is not None
-                )
-                total = len(all_tasks)
-                story_progress = (
-                    f"\nStory: {story.title}"
-                    f" - Task {completed + 1}/{total}"
-                )
-
-            # Parallel indicator
-            parallel_info = ""
-            if len(self._active_task_ids) > 1:
-                parallel_info = (
-                    f" [parallel: {len(self._active_task_ids)} workers]"
-                )
-
-            # Notify user with context (debounced — status update)
-            await self._notify_debounced(
-                task.phone_number,
-                f"Starting task{prd_title}: {task.title}"
-                f"{story_progress}{parallel_info}",
-            )
-
             # Create a progress callback for this task
+            # Note: no "Starting task" notification here — executor's
+            # first report_step() provides richer context and fires
+            # within sub-second, avoiding duplicate start text in
+            # debounced Signal messages.
             async def task_progress(msg: str):
                 await self._notify_debounced(
                     task.phone_number, f"  [{task.id}] {msg}",

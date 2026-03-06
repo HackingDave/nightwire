@@ -78,6 +78,10 @@ _TASK_TYPE_KEYWORDS = {
         "implement", "create", "add", "build", "develop",
         "feature", "new", "integrate", "deploy",
     ],
+    TaskType.PLANNING: [
+        "choose", "plan", "evaluate", "research",
+        "analyze", "strategy",
+    ],
 }
 
 
@@ -434,8 +438,10 @@ class TaskExecutor:
 
             # Short-circuit: if Claude claims success but created/modified
             # nothing, fail immediately — no point running expensive
-            # verification on an empty workspace
-            if not files_changed:
+            # verification on an empty workspace.
+            # Exception: planning tasks (choose, evaluate, research, etc.)
+            # legitimately produce no files — their output IS the deliverable.
+            if not files_changed and task_type != TaskType.PLANNING:
                 logger.warning(
                     "no_files_changed",
                     task_id=task.id,
@@ -456,6 +462,47 @@ class TaskExecutor:
                     ),
                     usage_data=usage_records or None,
                 )
+
+            # Planning tasks with 0 files: skip git/quality/verification
+            # but still extract learnings (Claude output is the deliverable)
+            if not files_changed and task_type == TaskType.PLANNING:
+                logger.info(
+                    "planning_task_no_files",
+                    task_id=task.id,
+                    task_title=task.title,
+                )
+                await report_step("Planning task complete (no files expected)")
+
+                result = TaskExecutionResult(
+                    task_id=task.id,
+                    success=True,
+                    claude_output=output,
+                    files_changed=[],
+                    execution_time_seconds=(
+                        (datetime.now() - start_time).total_seconds()
+                    ),
+                )
+
+                # Still extract learnings from planning output
+                try:
+                    learnings = await self.learning_extractor.extract_with_claude(
+                        task, result, runner,
+                    )
+                    if runner.last_usage:
+                        usage_records.append(runner.last_usage.copy())
+                except Exception as exc:
+                    logger.info(
+                        "structured_parse_fallback",
+                        component="learnings",
+                        error=str(exc)[:100],
+                    )
+                    learnings = await self.learning_extractor.extract(
+                        task, result,
+                    )
+
+                result.usage_data = usage_records or None
+                result.learnings_extracted = learnings
+                return result
 
             # Commit task changes to git (isolates from parallel workers)
             try:

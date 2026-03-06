@@ -496,6 +496,7 @@ class Config:
             "refactor": "medium",
             "testing": "medium",
             "verification": "max",
+            "planning": "medium",
         }
         auto_config = self.settings.get("autonomous", {})
         user_levels = auto_config.get("effort_levels", {})

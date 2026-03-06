@@ -52,7 +52,7 @@ class AutonomousManager:
         run_quality_gates: bool = True,
         max_parallel: int = 3,
         usage_recorder: Optional[Callable[..., Awaitable[None]]] = None,
-        debounce_seconds: float = 2.0,
+        debounce_seconds: float = 5.0,
         get_agent_definitions: Callable[[], Optional[str]] = lambda: None,
     ):
         """

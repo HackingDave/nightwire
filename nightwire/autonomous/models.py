@@ -86,6 +86,7 @@ class TaskType(str, Enum):
     REFACTOR = "refactor"
     TESTING = "testing"
     VERIFICATION = "verification"
+    PLANNING = "planning"
 
 
 class LearningCategory(str, Enum):

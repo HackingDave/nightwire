@@ -14,9 +14,14 @@ signal_api_url: "http://127.0.0.1:8080"
 # Claude CLI settings
 claude_timeout: 600           # Max seconds per Claude invocation
 claude_max_turns: 30          # Max conversation turns per invocation
+# claude_model: "claude-sonnet-4-5"    # Override model
 # claude_max_turns_planning: 30   # Override for planning (PRD, verification)
 # claude_max_turns_execution: 30  # Override for execution (task impl, auto-fix)
+# claude_max_budget_usd: 1.00    # Per-invocation USD budget cap (default: disabled)
 # claude_path: "/usr/local/bin/claude"  # Override Claude CLI path
+
+# Multi-instance — prevents feedback loops when multiple bots share a Signal account
+# instance_name: "nightwire"     # Prefix for outbound messages, filters inbound
 
 # Memory System
 memory:
@@ -30,13 +35,27 @@ autonomous:
   quality_gates: true          # Run tests/typecheck after each task
   max_parallel: 3              # Max concurrent task workers (1-10)
   verification: true           # Independent code review of task output
+  # stuck_task_timeout_minutes: 60    # Minutes before task flagged as stuck
+  # circuit_breaker_threshold: 3     # Consecutive failures before circuit break
+  # circuit_breaker_reset_minutes: 30  # Auto-reset period for circuit breakers
   # effort_levels:             # Override effort per task type
   #   implementation: "high"
   #   bug_fix: "high"
   #   refactor: "medium"
   #   testing: "medium"
+  #   planning: "medium"
   #   prd_breakdown: "max"
-  #   verification: "low"
+  #   verification: "max"
+
+# Signal UX — outbound message queue and notifications
+# signal_send_rate_per_second: 1.0    # Max outbound messages/sec per recipient
+# signal_send_timeout_seconds: 10     # HTTP timeout for Signal send requests
+# signal_send_max_retries: 3          # Max retry attempts for failed sends
+# signal_notification_debounce_seconds: 5.0  # Autonomous notification batching window
+
+# Usage & Cost Tracking — budget alerts via Signal
+# usage_daily_budget_usd: 10.00       # Daily cost alert threshold (default: disabled)
+# usage_weekly_budget_usd: 50.00      # Weekly cost alert threshold (default: disabled)
 
 # Rate Limiting
 # Currently hardcoded to 30 requests per 60-second window per user.

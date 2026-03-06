@@ -540,7 +540,7 @@ class SignalBot:
         """Send a message via Signal API, splitting long messages.
 
         Messages are prefixed with ``[instance_name]`` and split at
-        paragraph/line boundaries if they exceed 5000 characters.
+        paragraph/line boundaries if they exceed 3000 characters.
         When the message queue is active, messages are enqueued for
         rate-limited delivery. Before queue initialization, falls
         back to direct HTTP POST.
@@ -797,11 +797,12 @@ class SignalBot:
                                     else "typing" if envelope.get("typingMessage")
                                     else "other"
                                 )
-                                logger.debug(
-                                    "ws_envelope",
-                                    type=envelope_type,
-                                    frames=self._ws_frames_received,
-                                )
+                                if envelope_type in ("dataMessage", "syncMessage"):
+                                    logger.debug(
+                                        "ws_envelope",
+                                        type=envelope_type,
+                                        frames=self._ws_frames_received,
+                                    )
                                 await self._handle_signal_message(data)
                             except json.JSONDecodeError:
                                 logger.warning("invalid_json", data=msg.data[:100])

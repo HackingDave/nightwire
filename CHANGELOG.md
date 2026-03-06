@@ -5,6 +5,23 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.3] - 2026-03-06
+
+### Fixed — Production Deployment Issues (v3.0.2 Observations)
+
+- `bot.py`: WebSocket debug logging now filters to actionable envelope types (`dataMessage`, `syncMessage`) — receipt, typing, and other high-frequency frames no longer flood debug logs.
+- `autonomous/loop.py`: Removed duplicate "Starting task" notification from `_process_task()` — was being merged with executor's first progress callback within the debounce window, causing redundant text in Signal messages.
+- `autonomous/loop.py`: Fixed debounce constructor default from 2.0s to 5.0s to match `config.py` runtime default. Also fixed in `autonomous/manager.py`.
+- `autonomous/executor.py`: Planning tasks (choose, evaluate, research, etc.) no longer fail with "files_changed=0" — these tasks legitimately produce no files. Claude output is preserved and learning extraction still runs.
+- `bot.py`: Fixed stale docstring referencing 5000-char message split limit (actual limit is 3000 since v3.0.2).
+- `settings.yaml.example`: Added all missing configurable options: `instance_name`, `claude_max_budget_usd`, Signal UX settings, usage budget alerts, autonomous monitoring settings (`stuck_task_timeout_minutes`, `circuit_breaker_threshold`, `circuit_breaker_reset_minutes`).
+
+### Added
+
+- `autonomous/models.py`: `TaskType.PLANNING` enum value — auto-detected from task titles containing "choose", "plan", "evaluate", "research", "analyze", "strategy".
+- `config.py`: `"planning": "medium"` default effort level for planning tasks.
+- `settings.yaml.example`: `planning: "medium"` in effort_levels example.
+
 ## [3.0.2] - 2026-03-06
 
 ### Fixed — Production Deployment Issues (v3.0.1 Observations)
