@@ -223,6 +223,8 @@ class ClaudeRunner:
             )
         cmd = [
             self.config.claude_path, "-p",
+            # This is required for the tool to actually work.
+            "--dangerously-skip-permissions",
             "--output-format", output_format,
             "--model", self.config.claude_model,
             # Disable Claude Code sandbox to allow sudo/systemctl in tasks
