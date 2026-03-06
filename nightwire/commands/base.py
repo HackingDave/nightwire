@@ -217,6 +217,16 @@ class HandlerRegistry:
                 )
             self._handlers[cmd_name] = method
 
+    def register_external_help(
+        self, help_metadata: Dict[str, "HelpMetadata"]
+    ) -> None:
+        """Register help metadata for externally registered commands.
+
+        Args:
+            help_metadata: Mapping of command name to HelpMetadata.
+        """
+        self._help_metadata.update(help_metadata)
+
     def get(
         self, command: str
     ) -> Optional[Callable[..., Awaitable[Optional[str]]]]:

@@ -184,6 +184,22 @@ class TaskExecutor:
             self._verifier = VerificationAgent(self.db)
         return self._verifier
 
+    async def _get_head_hash(self, project_path: Path) -> Optional[str]:
+        """Get the current HEAD commit hash for diff reference."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git", "rev-parse", "HEAD",
+                cwd=str(project_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+            if proc.returncode == 0:
+                return stdout.decode().strip()
+        except (asyncio.TimeoutError, FileNotFoundError, OSError):
+            pass
+        return None
+
     async def _git_save_checkpoint(self, project_path: Path, task: Task) -> bool:
         """Create a git checkpoint before task execution.
 
@@ -375,6 +391,9 @@ class TaskExecutor:
             except GitCheckpointError as e:
                 logger.debug("git_checkpoint_skipped", task_id=task.id, error=str(e))
 
+            # Capture HEAD hash before Claude runs, for verifier diff reference
+            base_ref = await self._get_head_hash(project_path)
+
             # Take baseline test snapshot BEFORE implementation
             baseline = None
             if self.run_quality_gates:
@@ -541,6 +560,7 @@ class TaskExecutor:
                             claude_output=output,
                             files_changed=files_changed,
                             project_path=project_path,
+                            base_ref=base_ref,
                         )
                         if verification_result.passed:
                             await report_step("Verification passed")
@@ -563,6 +583,7 @@ class TaskExecutor:
                                     original_output=output,
                                     progress_callback=progress_callback,
                                     agent_definitions=agent_definitions,
+                                    base_ref=base_ref,
                                 )
                             )
                             usage_records.extend(fix_usage)
@@ -682,6 +703,7 @@ class TaskExecutor:
         original_output: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         agent_definitions: Optional[str] = None,
+        base_ref: Optional[str] = None,
     ) -> tuple:
         """Attempt to auto-fix issues found by verification.
 
@@ -749,6 +771,7 @@ class TaskExecutor:
                     claude_output=fix_output,
                     files_changed=current_files,
                     project_path=project_path,
+                    base_ref=base_ref,
                 )
                 # Collect re-verification usage
                 if current_result.usage_data:

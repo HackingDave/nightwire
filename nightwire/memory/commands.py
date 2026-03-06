@@ -270,3 +270,44 @@ class MemoryCommands:
                 lines.append(f"  - {p.key}: {p.value}")
 
         return "\n".join(lines)
+
+
+def get_memory_help_metadata():
+    """Return HelpMetadata for all memory commands."""
+    from ..commands.base import HelpMetadata
+
+    return {
+        "remember": HelpMetadata(
+            description="Store a fact or preference for the current project",
+            usage="/remember <text>",
+            examples=[
+                "/remember We use Black for formatting",
+                "/remember Always run tests with --tb=short",
+            ],
+        ),
+        "recall": HelpMetadata(
+            description="Semantically search past conversations and memories",
+            usage="/recall <query>",
+            examples=["/recall How did we set up migrations?"],
+        ),
+        "memories": HelpMetadata(
+            description="List all stored memories for the current project",
+            usage="/memories",
+            examples=["/memories"],
+        ),
+        "history": HelpMetadata(
+            description="View recent message history",
+            usage="/history [count]",
+            examples=["/history", "/history 20"],
+        ),
+        "forget": HelpMetadata(
+            description="Delete your data by scope",
+            usage="/forget <all|preferences|today>",
+            examples=["/forget today", "/forget preferences", "/forget all"],
+        ),
+        "preferences": HelpMetadata(
+            description="View your stored preferences",
+            usage="/preferences",
+            examples=["/preferences"],
+        ),
+    }

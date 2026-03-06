@@ -347,6 +347,13 @@ class SignalBot:
             "learnings": self.autonomous_commands.handle_learnings,
         })
 
+        # Register help metadata for external commands
+        from .autonomous.commands import get_autonomous_help_metadata
+        from .memory.commands import get_memory_help_metadata
+
+        self._registry.register_external_help(get_autonomous_help_metadata())
+        self._registry.register_external_help(get_memory_help_metadata())
+
         # Startup diagnostics — log feature availability
         try:
             from .diagnostics import run_all_checks

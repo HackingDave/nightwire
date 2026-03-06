@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nightwire"
-version = "3.0.3"
+version = "3.0.4"
 description = "A Signal messaging bot with Claude AI integration for intelligent conversations and autonomous development"
 readme = "README.md"
 license = {text = "MIT"}

@@ -551,7 +551,11 @@ RULES:
 5. Order tasks by dependency (foundations first)
 6. Include a final "Testing & Deployment" story if mentioned
 7. Be specific in task descriptions - mention exact files/components
-8. Keep tasks focused - if a task is too big, split it"""
+8. Keep tasks focused - if a task is too big, split it
+9. Set depends_on_indices for tasks that require other tasks in the same \
+story to complete first (0-based indices, e.g. [0, 1] means this task \
+depends on the first and second tasks). Tasks without dependencies run \
+in parallel."""
 
         # Fallback prompt with explicit JSON format (used when structured fails)
         fallback_prompt = structured_prompt + """
@@ -568,7 +572,8 @@ Return a JSON structure with this EXACT format (no markdown, just JSON):
                 {
                     "title": "Task title",
                     "description": "Detailed task description",
-                    "priority": 10
+                    "priority": 10,
+                    "depends_on_indices": []
                 }
             ]
         }
@@ -678,8 +683,10 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 description=story_bd.description,
             )
 
+            # Create tasks and collect IDs for dependency mapping
+            task_ids: list[int] = []
             for task_bd in story_bd.tasks:
-                await self.autonomous_manager.create_task(
+                task = await self.autonomous_manager.create_task(
                     story_id=story.id,
                     phone_number=sender,
                     project_name=project_name,
@@ -687,7 +694,30 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     description=task_bd.description,
                     priority=task_bd.priority,
                 )
+                task_ids.append(task.id)
                 total_tasks += 1
+
+            # Map depends_on_indices to actual task IDs
+            for idx, task_bd in enumerate(story_bd.tasks):
+                if not task_bd.depends_on_indices:
+                    continue
+                valid_deps = []
+                for dep_idx in task_bd.depends_on_indices:
+                    if dep_idx == idx:
+                        continue  # Skip self-references
+                    if 0 <= dep_idx < len(task_ids):
+                        valid_deps.append(task_ids[dep_idx])
+                    else:
+                        logger.warning(
+                            "invalid_dependency_index",
+                            task_idx=idx,
+                            dep_idx=dep_idx,
+                            max_idx=len(task_ids) - 1,
+                        )
+                if valid_deps:
+                    await self.autonomous_manager.db.update_task_depends_on(
+                        task_ids[idx], valid_deps,
+                    )
 
             story_summaries.append(
                 f"  - {story.title} ({len(story_bd.tasks)} tasks)"
@@ -727,8 +757,10 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             )
 
             task_count = 0
-            for task_data in story_data.get("tasks", []):
-                await self.autonomous_manager.create_task(
+            task_ids: list[int] = []
+            tasks_list = story_data.get("tasks", [])
+            for task_data in tasks_list:
+                task = await self.autonomous_manager.create_task(
                     story_id=story.id,
                     phone_number=sender,
                     project_name=project_name,
@@ -736,8 +768,25 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     description=task_data["description"],
                     priority=task_data.get("priority", 5),
                 )
+                task_ids.append(task.id)
                 task_count += 1
                 total_tasks += 1
+
+            # Map depends_on_indices to actual task IDs (if present)
+            for idx, task_data in enumerate(tasks_list):
+                dep_indices = task_data.get("depends_on_indices")
+                if not dep_indices:
+                    continue
+                valid_deps = []
+                for dep_idx in dep_indices:
+                    if dep_idx == idx:
+                        continue
+                    if 0 <= dep_idx < len(task_ids):
+                        valid_deps.append(task_ids[dep_idx])
+                if valid_deps:
+                    await self.autonomous_manager.db.update_task_depends_on(
+                        task_ids[idx], valid_deps,
+                    )
 
             story_summaries.append(
                 f"  - {story.title} ({task_count} tasks)"

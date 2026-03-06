@@ -5,6 +5,24 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.4] - 2026-03-06
+
+### Fixed — Production Deployment Issues (v3.0.3 Observations)
+
+- `autonomous/database.py`: Fixed `_get_task_stats_sync()` second SQL query (completed_today/failed_today counts) not filtering by `project_name` — `/tasks` showed 0 completed for the active project when tasks existed across multiple projects.
+- `autonomous/commands.py`: `/autonomous start` now resumes a paused loop instead of silently doing nothing — checks `get_loop_status()` and calls `resume_loop()` when paused, returns "already running" when active.
+- `autonomous/loop.py`: Verification failure notifications now include issue details (security concerns, logic errors, top issues) instead of just a count — module-level `_format_verification_summary()` function formats top 3 items, used in both retry and max-retries notification paths.
+- `autonomous/verifier.py`: Fixed `_get_git_diff()` returning empty diffs for all verified tasks — executor now captures pre-task HEAD hash via `_get_head_hash()` and passes it as `base_ref` to the verifier, replacing the fragile `HEAD~1` fallback. Added `process.returncode` checks on both subprocess calls.
+- `commands/base.py`: Added `register_external_help()` method to `HandlerRegistry` — enables HelpMetadata registration for externally registered commands.
+- `autonomous/commands.py`, `memory/commands.py`: Added `get_help_metadata()` functions providing detailed `/help <command>` output for all 13 external commands (7 autonomous + 6 memory) — previously returned generic "Use /help for the full command list" fallback.
+
+### Added
+
+- `autonomous/models.py`: `depends_on_indices` field on `TaskBreakdown` schema — Claude now declares task dependencies during PRD creation (0-based indices within the same story).
+- `task_manager.py`: Dependency index-to-ID mapping in both `_create_prd_from_breakdown()` and `_create_prd_from_dict()` — validates indices (skips self-references, clamps range, logs warnings), creates `depends_on` entries via new `update_task_depends_on()` DB method.
+- `autonomous/database.py`: `update_task_depends_on()` async method with thread-safe `_lock` for setting task dependency lists.
+- Structured prompt rule 9: Instructs Claude to populate `depends_on_indices` for tasks with dependencies during PRD generation.
+
 ## [3.0.3] - 2026-03-06
 
 ### Fixed — Production Deployment Issues (v3.0.2 Observations)

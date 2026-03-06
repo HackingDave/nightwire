@@ -77,6 +77,7 @@ class VerificationAgent:
         claude_output: str,
         files_changed: List[str],
         project_path: Path,
+        base_ref: Optional[str] = None,
     ) -> VerificationResult:
         """Run independent verification on a completed task.
 
@@ -90,6 +91,10 @@ class VerificationAgent:
 
         Uses diff-based caching: if the same git diff was already verified
         for this task, returns the cached result without spawning Claude.
+
+        Args:
+            base_ref: Git commit hash captured before task execution.
+                Used as diff reference instead of fragile ``HEAD~1``.
         """
         start_time = datetime.now()
 
@@ -102,7 +107,7 @@ class VerificationAgent:
             )
 
         # Collect git diff for actual code changes
-        git_diff = await self._get_git_diff(project_path)
+        git_diff = await self._get_git_diff(project_path, base_ref=base_ref)
 
         # Check cache: if same diff was verified within TTL, skip re-verification
         diff_hash = hash((task.id, git_diff))
@@ -317,8 +322,16 @@ class VerificationAgent:
             logger.debug("verification_text_error", error=str(e))
             return None
 
-    async def _get_git_diff(self, project_path: Path) -> str:
-        """Get git diff of changes in the project (committed or uncommitted)."""
+    async def _get_git_diff(
+        self, project_path: Path, base_ref: Optional[str] = None,
+    ) -> str:
+        """Get git diff of changes in the project.
+
+        Args:
+            project_path: Project directory.
+            base_ref: Git commit hash captured before task execution.
+                When provided, diffs against this ref instead of HEAD~1.
+        """
         try:
             # First try uncommitted changes
             process = await asyncio.create_subprocess_exec(
@@ -331,21 +344,31 @@ class VerificationAgent:
                 process.communicate(), timeout=30
             )
 
-            diff = stdout.decode("utf-8", errors="replace")
+            diff = ""
+            if process.returncode == 0:
+                diff = stdout.decode("utf-8", errors="replace")
 
             if not diff:
-                # If no uncommitted changes, check the last commit (executor may
-                # have already committed the changes before verification runs)
+                # Changes already committed — diff against base_ref or HEAD~1
+                ref = base_ref or "HEAD~1"
                 process = await asyncio.create_subprocess_exec(
-                    "git", "diff", "HEAD~1", "HEAD",
+                    "git", "diff", ref, "HEAD",
                     cwd=str(project_path),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, _ = await asyncio.wait_for(
+                stdout, stderr = await asyncio.wait_for(
                     process.communicate(), timeout=30
                 )
-                diff = stdout.decode("utf-8", errors="replace")
+                if process.returncode == 0:
+                    diff = stdout.decode("utf-8", errors="replace")
+                else:
+                    logger.debug(
+                        "git_diff_fallback_failed",
+                        ref=ref,
+                        returncode=process.returncode,
+                        stderr=stderr.decode("utf-8", errors="replace")[:200],
+                    )
 
             max_diff_size = 15000
             if len(diff) > max_diff_size:

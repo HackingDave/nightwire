@@ -443,6 +443,13 @@ class TaskBreakdown(BaseModel):
     priority: int = Field(
         default=5, ge=1, le=100, description="Execution priority (higher=first)"
     )
+    depends_on_indices: Optional[List[int]] = Field(
+        default=None,
+        description=(
+            "0-based indices of other tasks within the same story "
+            "that must complete before this task can start"
+        ),
+    )
 
 
 class StoryBreakdown(BaseModel):

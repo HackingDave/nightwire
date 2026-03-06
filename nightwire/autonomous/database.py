@@ -1005,6 +1005,30 @@ class AutonomousDatabase:
                 )
             self._conn.commit()
 
+    async def update_task_depends_on(
+        self, task_id: int, depends_on: List[int]
+    ) -> None:
+        """Update the depends_on field for a task.
+
+        Args:
+            task_id: Database ID of the task.
+            depends_on: List of task IDs this task depends on.
+        """
+        await asyncio.to_thread(
+            self._update_task_depends_on_sync, task_id, depends_on
+        )
+
+    def _update_task_depends_on_sync(
+        self, task_id: int, depends_on: List[int]
+    ) -> None:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "UPDATE tasks SET depends_on = ? WHERE id = ?",
+                (json.dumps(depends_on), task_id),
+            )
+            self._conn.commit()
+
     async def store_verification_result(
         self, task_id: int, verification: VerificationResult
     ) -> None:
@@ -1425,18 +1449,22 @@ class AutonomousDatabase:
         for row in rows:
             stats[row["status"]] = row["count"]
 
-        # Get today's completed/failed counts
-        cursor.execute(
-            """
+        # Get today's completed/failed counts (same project filter as above)
+        sql2 = """
             SELECT
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_today,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_today
             FROM tasks
             WHERE phone_number = ?
             AND completed_at >= date('now')
-        """,
-            (phone_number,),
-        )
+        """
+        params2: list = [phone_number]
+
+        if project_name:
+            sql2 += " AND project_name = ?"
+            params2.append(project_name)
+
+        cursor.execute(sql2, params2)
         today_row = cursor.fetchone()
 
         return {

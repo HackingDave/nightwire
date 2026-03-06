@@ -56,6 +56,28 @@ class _WorkerInfo:
     started_at: datetime = field(default_factory=datetime.now)
 
 
+def _format_verification_summary(verification) -> str:
+    """Format a brief summary of verification issues for Signal notifications.
+
+    Prioritizes security concerns, then logic errors, then general issues.
+    Returns up to 3 items total, or empty string if verification passed.
+    """
+    if not verification or verification.passed:
+        return ""
+    details = []
+    for concern in (verification.security_concerns or [])[:2]:
+        details.append(f"Security: {concern[:100]}")
+    remaining = 3 - len(details)
+    for error in (verification.logic_errors or [])[:remaining]:
+        details.append(f"Logic: {error[:100]}")
+    remaining = 3 - len(details)
+    for issue in (verification.issues or [])[:remaining]:
+        details.append(f"Issue: {issue[:100]}")
+    if not details:
+        return ""
+    return "\nDetails:\n" + "\n".join(f"- {d}" for d in details)
+
+
 class AutonomousLoop:
     """Background loop for autonomous task execution.
 
@@ -879,12 +901,19 @@ class AutonomousLoop:
                 error_message=result.error_message,
             )
 
+            verification_detail = ""
+            if hasattr(result, 'verification') and result.verification:
+                verification_detail = _format_verification_summary(
+                    result.verification
+                )
+
             await self._notify_debounced(
                 task.phone_number,
                 f"Task failed, retrying"
                 f" ({task.retry_count + 1}/{task.max_retries}): "
                 f"{task.title}\nError: "
-                f"{result.error_message[:200] if result.error_message else 'Unknown'}",
+                f"{result.error_message[:200] if result.error_message else 'Unknown'}"
+                f"{verification_detail}",
             )
         else:
             # Max retries reached
@@ -902,11 +931,18 @@ class AutonomousLoop:
                 for learning in result.learnings_extracted:
                     await self.db.store_learning(learning)
 
+            verification_detail = ""
+            if hasattr(result, 'verification') and result.verification:
+                verification_detail = _format_verification_summary(
+                    result.verification
+                )
+
             await self._notify(
                 task.phone_number,
                 f"Task FAILED (max retries): {task.title}\n"
                 f"Error: "
-                f"{result.error_message[:300] if result.error_message else 'Unknown'}",
+                f"{result.error_message[:300] if result.error_message else 'Unknown'}"
+                f"{verification_detail}",
             )
 
             # Check if story should be marked as failed

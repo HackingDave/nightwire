@@ -532,6 +532,12 @@ Example:
         subcommand = args.strip().lower().split()[0]
 
         if subcommand == "start":
+            status = await self.manager.get_loop_status()
+            if status.is_paused:
+                await self.manager.resume_loop()
+                return "Autonomous loop resumed (was paused)."
+            if status.is_running:
+                return "Autonomous loop is already running."
             await self.manager.start_loop()
             return "Autonomous loop started. Tasks will be processed automatically."
         elif subcommand == "stop":
@@ -727,3 +733,54 @@ Example:
         )
 
         return f"Learning #{learning_id} added: {title}"
+
+
+def get_autonomous_help_metadata():
+    """Return HelpMetadata for all autonomous commands."""
+    from ..commands.base import HelpMetadata
+
+    return {
+        "prd": HelpMetadata(
+            description="Create or view Product Requirements Documents",
+            usage="/prd <title> | /prd list | /prd <id>",
+            examples=["/prd Add OAuth2 login", "/prd list", "/prd 5"],
+        ),
+        "story": HelpMetadata(
+            description="Add a user story to a PRD",
+            usage="/story <prd_id> <title> | <description>",
+            examples=["/story 5 Google OAuth | Implement Google OAuth2 flow"],
+        ),
+        "task": HelpMetadata(
+            description="Add a task to a story",
+            usage="/task <story_id> <title> | <description>",
+            examples=["/task 12 Add callback endpoint | Create GET /auth/callback"],
+        ),
+        "tasks": HelpMetadata(
+            description="List tasks, optionally filtered by status",
+            usage="/tasks [status]",
+            examples=["/tasks", "/tasks running", "/tasks completed"],
+        ),
+        "queue": HelpMetadata(
+            description="Queue tasks for autonomous execution",
+            usage="/queue story <id> | /queue prd <id>",
+            examples=["/queue story 12", "/queue prd 5"],
+        ),
+        "autonomous": HelpMetadata(
+            description="Control the autonomous task execution loop",
+            usage="/autonomous <start|stop|pause|resume|status>",
+            examples=[
+                "/autonomous start",
+                "/autonomous pause",
+                "/autonomous status",
+            ],
+        ),
+        "learnings": HelpMetadata(
+            description="View or search learnings from completed tasks",
+            usage="/learnings [search <query>] | /learnings add <cat> | <title> | <content>",
+            examples=[
+                "/learnings",
+                "/learnings search oauth",
+                "/learnings add pattern | Use JWT | Short-lived tokens",
+            ],
+        ),
+    }
