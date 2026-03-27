@@ -5,6 +5,16 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.17] - 2026-03-27
+
+### Fixed
+- Plugin and cooldown manager initialization moved from `set_shutdown_callback` to `__init__` — prevents breakage if callback is never set or set multiple times
+- Autonomous database now shares the memory DB's threading.Lock, preventing SQLite corruption under parallel task workers
+- Atomic file writes for `projects.yaml` and interrupted tasks file (write-to-tmp + `os.replace`)
+- Bot-message detection uses configurable `instance_name` instead of hardcoded `[nightwire` prefix
+- Dedup hash now includes sender to prevent cross-user deduplication collisions
+- Dedup cache bounded to 10k entries to prevent unbounded growth on clock skew
+
 ## [2.5.16] - 2026-03-27
 
 ### Added
