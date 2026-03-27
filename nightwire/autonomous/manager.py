@@ -1,6 +1,7 @@
 """Central coordinator for the autonomous task system."""
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Optional, List, Callable, Awaitable
 
@@ -32,6 +33,7 @@ class AutonomousManager:
     def __init__(
         self,
         db_connection: sqlite3.Connection,
+        db_lock: threading.Lock = None,
         progress_callback: Optional[Callable[[str, str], Awaitable[None]]] = None,
         poll_interval: int = 30,
         run_quality_gates: bool = True,
@@ -42,12 +44,13 @@ class AutonomousManager:
 
         Args:
             db_connection: SQLite connection from memory system
+            db_lock: Threading lock shared with memory DB to prevent corruption
             progress_callback: Async callback(phone_number, message) for notifications
             poll_interval: Seconds between queue polls
             run_quality_gates: Whether to run tests/typecheck after tasks
             max_parallel: Max concurrent task workers
         """
-        self.db = AutonomousDatabase(db_connection)
+        self.db = AutonomousDatabase(db_connection, lock=db_lock)
         self.quality_runner = QualityGateRunner()
         self.learning_extractor = LearningExtractor()
         self.executor = TaskExecutor(

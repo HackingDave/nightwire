@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import time as _time
 from collections import OrderedDict
 from datetime import datetime
@@ -99,10 +100,6 @@ class SignalBot:
         # Auto-updater (initialized in start() if enabled)
         self.updater: Optional[AutoUpdater] = None
 
-    def set_shutdown_callback(self, callback: callable):
-        """Set the callback that triggers graceful shutdown (called from main.py)."""
-        self._shutdown_callback = callback
-
         # Cooldown manager (initialized in start())
         self.cooldown_manager = None
 
@@ -117,6 +114,10 @@ class SignalBot:
             data_dir=plugins_data_dir,
         )
         self.plugin_loader.discover_and_load()
+
+    def set_shutdown_callback(self, callback: callable):
+        """Set the callback that triggers graceful shutdown (called from main.py)."""
+        self._shutdown_callback = callback
 
     async def start(self):
         """Start the bot."""
@@ -142,6 +143,7 @@ class SignalBot:
 
         self.autonomous_manager = AutonomousManager(
             db_connection=self.memory.db._conn,
+            db_lock=self.memory.db._lock,
             progress_callback=autonomous_notify,
             poll_interval=self.config.autonomous_poll_interval,
             run_quality_gates=self.config.autonomous_quality_gates,
@@ -307,7 +309,9 @@ class SignalBot:
         if interrupted:
             try:
                 self._interrupted_tasks_file.parent.mkdir(parents=True, exist_ok=True)
-                self._interrupted_tasks_file.write_text(json.dumps(interrupted, indent=2))
+                tmp = self._interrupted_tasks_file.with_suffix(".tmp")
+                tmp.write_text(json.dumps(interrupted, indent=2))
+                os.replace(str(tmp), str(self._interrupted_tasks_file))
                 logger.info("interrupted_tasks_saved", count=len(interrupted))
             except Exception as e:
                 logger.error("interrupted_tasks_save_failed", error=str(e))
@@ -1634,7 +1638,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             # multiple linked instances — each instance's responses arrive as
             # dataMessages on other instances sharing the same account)
             # Matches any instance name variant: [nightwire], [nightwire-mac], etc.
-            if message_text and message_text.strip().startswith("[nightwire"):
+            if message_text and message_text.strip().startswith(f"[{self.config.instance_name}"):
                 return
 
             # Ignore receipts, typing indicators, and other message types
@@ -1650,7 +1654,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             # Deduplication: Signal sends both dataMessage and syncMessage for self-messages
             timestamp = envelope.get("timestamp", 0)
             dedup_text = (message_text or "").strip()
-            msg_hash = hashlib.sha256(f"{timestamp}:{dedup_text}".encode()).hexdigest()
+            msg_hash = hashlib.sha256(f"{source}:{timestamp}:{dedup_text}".encode()).hexdigest()
             if msg_hash in self._processed_messages:
                 logger.debug("duplicate_message_skipped", timestamp=timestamp)
                 return
@@ -1664,6 +1668,10 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     self._processed_messages.pop(oldest_key)
                 else:
                     break
+
+            # Hard cap to prevent unbounded growth on clock skew
+            while len(self._processed_messages) > 10000:
+                self._processed_messages.popitem(last=False)
 
             # Default empty text for attachment-only messages
             if not message_text:

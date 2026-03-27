@@ -40,8 +40,10 @@ class Config:
     def save_projects(self):
         """Save the projects configuration."""
         filepath = self.config_dir / "projects.yaml"
-        with open(filepath, "w") as f:
+        tmp = filepath.with_suffix(".yaml.tmp")
+        with open(tmp, "w") as f:
             yaml.dump(self.projects, f, default_flow_style=False)
+        os.replace(str(tmp), str(filepath))
 
     @property
     def allowed_numbers(self) -> List[str]:

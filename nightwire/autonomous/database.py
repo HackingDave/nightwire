@@ -1,8 +1,10 @@
 """Database operations for the autonomous task system."""
 
 import asyncio
+import functools
 import json
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Any
@@ -27,6 +29,20 @@ from .models import (
 logger = structlog.get_logger()
 
 
+def _locked(method):
+    """Decorator to serialize all sync database access via threading.Lock.
+
+    Prevents sqlite3.InterfaceError from concurrent thread access to
+    the same connection when asyncio.to_thread dispatches to multiple
+    thread pool workers simultaneously.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 class AutonomousDatabase:
     """Database operations for autonomous task management.
 
@@ -35,10 +51,11 @@ class AutonomousDatabase:
     Authorization is enforced at the Signal message entry point (security.py).
     """
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, lock: threading.Lock = None):
         """Initialize with existing database connection from memory system."""
         self._conn = conn
         self._conn.row_factory = sqlite3.Row
+        self._lock = lock or threading.Lock()
 
     def _parse_timestamp(self, ts_str: Optional[str]) -> Optional[datetime]:
         """Parse SQLite timestamp format."""
@@ -80,6 +97,7 @@ class AutonomousDatabase:
             metadata,
         )
 
+    @_locked
     def _create_prd_sync(
         self,
         phone_number: str,
@@ -115,6 +133,7 @@ class AutonomousDatabase:
         """Get a PRD by ID with story counts."""
         return await asyncio.to_thread(self._get_prd_sync, prd_id)
 
+    @_locked
     def _get_prd_sync(self, prd_id: int) -> Optional[PRD]:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -162,6 +181,7 @@ class AutonomousDatabase:
             self._list_prds_sync, phone_number, project_name, status
         )
 
+    @_locked
     def _list_prds_sync(
         self,
         phone_number: str,
@@ -219,6 +239,7 @@ class AutonomousDatabase:
         """Update PRD status."""
         await asyncio.to_thread(self._update_prd_status_sync, prd_id, status)
 
+    @_locked
     def _update_prd_status_sync(self, prd_id: int, status: PRDStatus) -> None:
         cursor = self._conn.cursor()
         completed_at = (
@@ -261,6 +282,7 @@ class AutonomousDatabase:
             metadata,
         )
 
+    @_locked
     def _create_story_sync(
         self,
         prd_id: int,
@@ -318,6 +340,7 @@ class AutonomousDatabase:
         """Get a story by ID with task counts."""
         return await asyncio.to_thread(self._get_story_sync, story_id)
 
+    @_locked
     def _get_story_sync(self, story_id: int) -> Optional[Story]:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -373,6 +396,7 @@ class AutonomousDatabase:
             self._list_stories_sync, prd_id, phone_number, status
         )
 
+    @_locked
     def _list_stories_sync(
         self,
         prd_id: Optional[int],
@@ -440,6 +464,7 @@ class AutonomousDatabase:
         """Update story status."""
         await asyncio.to_thread(self._update_story_status_sync, story_id, status)
 
+    @_locked
     def _update_story_status_sync(self, story_id: int, status: StoryStatus) -> None:
         cursor = self._conn.cursor()
         completed_at = (
@@ -490,6 +515,7 @@ class AutonomousDatabase:
             effort_level,
         )
 
+    @_locked
     def _create_task_sync(
         self,
         story_id: int,
@@ -575,6 +601,7 @@ class AutonomousDatabase:
         """Get a task by ID."""
         return await asyncio.to_thread(self._get_task_sync, task_id)
 
+    @_locked
     def _get_task_sync(self, task_id: int) -> Optional[Task]:
         cursor = self._conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -658,6 +685,7 @@ class AutonomousDatabase:
             self._list_tasks_sync, story_id, phone_number, project_name, status, limit
         )
 
+    @_locked
     def _list_tasks_sync(
         self,
         story_id: Optional[int],
@@ -699,6 +727,7 @@ class AutonomousDatabase:
         """Get the next task in queue (highest priority, lowest order)."""
         return await asyncio.to_thread(self._get_next_queued_task_sync)
 
+    @_locked
     def _get_next_queued_task_sync(self) -> Optional[Task]:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -721,6 +750,7 @@ class AutonomousDatabase:
         """Get count of queued tasks."""
         return await asyncio.to_thread(self._get_queued_task_count_sync)
 
+    @_locked
     def _get_queued_task_count_sync(self) -> int:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -752,6 +782,7 @@ class AutonomousDatabase:
             quality_gate_results,
         )
 
+    @_locked
     def _update_task_status_sync(
         self,
         task_id: int,
@@ -848,6 +879,7 @@ class AutonomousDatabase:
             self._store_verification_result_sync, task_id, verification
         )
 
+    @_locked
     def _store_verification_result_sync(
         self, task_id: int, verification: VerificationResult
     ) -> None:
@@ -863,6 +895,7 @@ class AutonomousDatabase:
         """Increment task retry count."""
         await asyncio.to_thread(self._increment_retry_count_sync, task_id)
 
+    @_locked
     def _increment_retry_count_sync(self, task_id: int) -> None:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -874,6 +907,7 @@ class AutonomousDatabase:
         """Queue all pending tasks for a story. Returns count queued."""
         return await asyncio.to_thread(self._queue_tasks_for_story_sync, story_id)
 
+    @_locked
     def _queue_tasks_for_story_sync(self, story_id: int) -> int:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -891,6 +925,7 @@ class AutonomousDatabase:
         """Queue all pending tasks for all stories in a PRD. Returns count queued."""
         return await asyncio.to_thread(self._queue_tasks_for_prd_sync, prd_id)
 
+    @_locked
     def _queue_tasks_for_prd_sync(self, prd_id: int) -> int:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -911,6 +946,7 @@ class AutonomousDatabase:
         """Store a learning. Returns learning ID."""
         return await asyncio.to_thread(self._store_learning_sync, learning)
 
+    @_locked
     def _store_learning_sync(self, learning: Learning) -> int:
         cursor = self._conn.cursor()
 
@@ -954,6 +990,7 @@ class AutonomousDatabase:
             self._get_learnings_sync, phone_number, project_name, category, limit
         )
 
+    @_locked
     def _get_learnings_sync(
         self,
         phone_number: str,
@@ -1018,6 +1055,7 @@ class AutonomousDatabase:
             self._get_relevant_learnings_sync, phone_number, project_name, query, limit
         )
 
+    @_locked
     def _get_relevant_learnings_sync(
         self,
         phone_number: str,
@@ -1087,6 +1125,7 @@ class AutonomousDatabase:
         """Increment learning usage count and update last_used."""
         await asyncio.to_thread(self._increment_learning_usage_sync, learning_id)
 
+    @_locked
     def _increment_learning_usage_sync(self, learning_id: int) -> None:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -1105,6 +1144,7 @@ class AutonomousDatabase:
             self._decay_unused_learnings_sync, days_threshold
         )
 
+    @_locked
     def _decay_unused_learnings_sync(self, days_threshold: int) -> int:
         cursor = self._conn.cursor()
         cursor.execute(
@@ -1130,6 +1170,7 @@ class AutonomousDatabase:
             self._get_task_stats_sync, phone_number, project_name
         )
 
+    @_locked
     def _get_task_stats_sync(
         self, phone_number: str, project_name: Optional[str]
     ) -> dict:
