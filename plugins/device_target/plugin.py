@@ -9,8 +9,8 @@ import aiohttp
 
 from nightwire.plugin_base import HelpSection, MessageMatcher, NightwirePlugin, PluginContext
 
-# Task commands that should be gated by device targeting
-_GATED_COMMANDS = frozenset({"do", "ask", "complex", "summary"})
+# Commands that should NOT be gated — must work on all instances
+_PASSTHROUGH_COMMANDS = frozenset({"target", "help"})
 
 
 class DeviceTargetPlugin(NightwirePlugin):
@@ -59,11 +59,11 @@ class DeviceTargetPlugin(NightwirePlugin):
         return None
 
     def _is_gated_message(self, message: str) -> bool:
-        """Check if a message is a task command or plain text that should be gated."""
+        """Check if a message should be gated. Everything is gated except passthrough commands."""
         stripped = message.strip()
         if stripped.startswith("/"):
             cmd = stripped[1:].split()[0].lower() if stripped[1:] else ""
-            return cmd in _GATED_COMMANDS
+            return cmd not in _PASSTHROUGH_COMMANDS
         # Plain text messages (implicit /do) are gated
         return True
 

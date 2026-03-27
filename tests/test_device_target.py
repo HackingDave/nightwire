@@ -171,32 +171,33 @@ class TestMessageGating:
         assert result == ""
 
     @pytest.mark.asyncio
-    async def test_does_not_gate_non_task_commands(self, tmp_path):
-        """Commands like /help, /status, /target should not be gated."""
+    async def test_does_not_gate_passthrough_commands(self, tmp_path):
+        """Only /help and /target should pass through ungated."""
         ctx = _make_ctx(tmp_path, instance_name="nightwire-osx")
         plugin = _make_plugin(ctx)
         plugin._targets["+15559999999"] = "nightwire-linux"
 
-        # The match_fn should not match /help
         matchers = plugin.message_matchers()
         gate_matcher = [m for m in matchers if m.pre_command][0]
         assert gate_matcher.match_fn("/help") is False
-        assert gate_matcher.match_fn("/status") is False
         assert gate_matcher.match_fn("/target osx") is False
-        assert gate_matcher.match_fn("/projects") is False
 
     @pytest.mark.asyncio
-    async def test_gates_ask_command(self, tmp_path):
-        """The /ask command should be gated."""
+    async def test_gates_all_other_commands(self, tmp_path):
+        """All commands except /help and /target should be gated."""
         ctx = _make_ctx(tmp_path, instance_name="nightwire-osx")
         plugin = _make_plugin(ctx)
         plugin._targets["+15559999999"] = "nightwire-linux"
 
         matchers = plugin.message_matchers()
         gate_matcher = [m for m in matchers if m.pre_command][0]
+        assert gate_matcher.match_fn("/do fix bug") is True
         assert gate_matcher.match_fn("/ask what is this") is True
         assert gate_matcher.match_fn("/complex build auth") is True
         assert gate_matcher.match_fn("/summary") is True
+        assert gate_matcher.match_fn("/select NightBeacon") is True
+        assert gate_matcher.match_fn("/status") is True
+        assert gate_matcher.match_fn("/projects") is True
 
 
 class TestTargetCommand:
