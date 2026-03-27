@@ -88,3 +88,59 @@ def test_message_matcher_pre_command_set():
         pre_command=True,
     )
     assert matcher.pre_command is True
+
+
+def test_plugin_context_instance_name():
+    """PluginContext exposes instance_name from top-level settings."""
+    from nightwire.plugin_base import PluginContext
+
+    ctx = PluginContext(
+        plugin_name="test",
+        send_message=AsyncMock(),
+        settings={"instance_name": "nightwire-osx", "plugins": {}},
+        allowed_numbers=[],
+        data_dir=Path("/tmp"),
+    )
+    assert ctx.instance_name == "nightwire-osx"
+
+
+def test_plugin_context_instance_name_default():
+    """PluginContext instance_name defaults to 'nightwire'."""
+    from nightwire.plugin_base import PluginContext
+
+    ctx = PluginContext(
+        plugin_name="test",
+        send_message=AsyncMock(),
+        settings={},
+        allowed_numbers=[],
+        data_dir=Path("/tmp"),
+    )
+    assert ctx.instance_name == "nightwire"
+
+
+def test_plugin_context_signal_api_url():
+    """PluginContext exposes signal_api_url from top-level settings."""
+    from nightwire.plugin_base import PluginContext
+
+    ctx = PluginContext(
+        plugin_name="test",
+        send_message=AsyncMock(),
+        settings={"signal_api_url": "http://10.0.0.1:9090", "plugins": {}},
+        allowed_numbers=[],
+        data_dir=Path("/tmp"),
+    )
+    assert ctx.signal_api_url == "http://10.0.0.1:9090"
+
+
+def test_plugin_context_signal_api_url_default():
+    """PluginContext signal_api_url defaults to localhost:8080."""
+    from nightwire.plugin_base import PluginContext
+
+    ctx = PluginContext(
+        plugin_name="test",
+        send_message=AsyncMock(),
+        settings={},
+        allowed_numbers=[],
+        data_dir=Path("/tmp"),
+    )
+    assert ctx.signal_api_url == "http://127.0.0.1:8080"
