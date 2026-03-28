@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Increased default `claude_max_turns` from 15 to 25 to prevent premature task termination on complex tasks
 
+### Fixed
+- Test for OpenCode signal message exec path now initializes `_task_semaphore` to match the OOM prevention changes
+
 ## [2.5.17] - 2026-03-27
 
 ### Fixed

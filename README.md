@@ -103,6 +103,7 @@ The installer supports flags for advanced usage:
 ```bash
 ./install.sh --quick              # Minimal prompts, smart defaults
 ./install.sh --phone=+1555...     # Set phone number non-interactively
+./install.sh --opencode           # Use OpenCode CLI instead of Claude CLI
 ./install.sh --skip-signal        # Skip Signal pairing setup
 ./install.sh --skip-systemd       # Skip service installation
 ./install.sh --restart            # Restart the nightwire service
@@ -112,13 +113,15 @@ The installer supports flags for advanced usage:
 
 During interactive install, you'll be prompted for a **device name** (default: `nightwire`) — this is the name shown in Signal's **Settings → Linked Devices** list. In `--quick` mode, it defaults to `nightwire` automatically.
 
+The installer also prompts you to choose between **Claude CLI** (default) and **OpenCode CLI** as the task runner. Use `--opencode` to select OpenCode non-interactively. Both runners power `/ask`, `/do`, and `/complex` — the rest of the bot is runner-agnostic.
+
 ## Requirements
 
 | Dependency | Notes |
 |---|---|
 | **Python 3.9+** | Required |
 | **Docker** | Required for Signal bridge container |
-| **Claude CLI** | Recommended (powers /ask, /do, /complex) |
+| **Claude CLI** or **OpenCode CLI** | At least one required (powers /ask, /do, /complex). Claude is the default; OpenCode is supported as an alternative runner |
 | **Signal account** | Required |
 
 The bot runs natively in a Python venv, managed by systemd (Linux) or launchd (macOS). Docker is only used for the Signal bridge (signal-cli-rest-api).
@@ -419,6 +422,12 @@ claude_timeout: 600         # Max seconds per Claude invocation (default: 1800)
 claude_max_turns: 25        # Max conversation turns per invocation
 max_concurrent_tasks: 2     # Max simultaneous Claude subprocesses (prevents OOM)
 # claude_path: "/usr/local/bin/claude"  # Override Claude CLI path
+
+# Runner selection (default: claude)
+# Set to "opencode" to use OpenCode CLI instead of Claude
+# runner:
+#   type: "claude"       # "claude" or "opencode"
+#   path: ""             # optional: explicit path to runner binary
 
 # Project directories
 # projects_base_path: "/home/user/projects"   # Base path for project auto-discovery

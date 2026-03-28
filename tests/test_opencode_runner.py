@@ -465,6 +465,7 @@ async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(
     bot.plugin_loader = SimpleNamespace(get_sorted_matchers=lambda: [])
     bot.cooldown_manager = None
     bot._sender_tasks = {}
+    bot._task_semaphore = asyncio.Semaphore(2)
     bot.nightwire_runner = None
     bot._send_message = AsyncMock(return_value=None)
 
