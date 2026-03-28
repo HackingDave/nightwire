@@ -144,6 +144,8 @@ class ClaudeRunner:
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "USER": os.environ.get("USER", ""),
             "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+            # Cap Node.js heap to 8GB to prevent OOM kills from runaway Claude processes
+            "NODE_OPTIONS": os.environ.get("NODE_OPTIONS", "--max-old-space-size=8192"),
         }
 
         if self.config.runner_type == "opencode":

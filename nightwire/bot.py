@@ -81,6 +81,10 @@ class SignalBot:
         # Key: (sender_phone, project_name), Value: dict with task, description, start, step
         self._sender_tasks: Dict[tuple, dict] = {}
 
+        # Global semaphore to cap total concurrent Claude subprocesses.
+        # Prevents OOM kills when multiple long-running tasks exhaust system memory.
+        self._task_semaphore = asyncio.Semaphore(self.config.max_concurrent_tasks)
+
         # File to persist interrupted tasks across restarts
         self._interrupted_tasks_file = Path(self.config.config_dir).parent / "data" / "interrupted_tasks.json"
 
@@ -990,15 +994,17 @@ AI Assistant:
                     )
                     effective_description = task_description + paths_section
 
-                task_state["step"] = "Claude executing task..."
-                # Use project_path captured at task creation to avoid race conditions
-                # when user switches projects while a task is running
-                success, response = await self.runner.run_claude(
-                    effective_description,
-                    progress_callback=progress_cb,
-                    memory_context=memory_context,
-                    project_path=task_project_path,
-                )
+                task_state["step"] = "Waiting for available slot..."
+                async with self._task_semaphore:
+                    task_state["step"] = "Claude executing task..."
+                    # Use project_path captured at task creation to avoid race conditions
+                    # when user switches projects while a task is running
+                    success, response = await self.runner.run_claude(
+                        effective_description,
+                        progress_callback=progress_cb,
+                        memory_context=memory_context,
+                        project_path=task_project_path,
+                    )
 
                 # Handle empty or failed responses
                 if not success:
@@ -1261,11 +1267,12 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         try:
             # Run Claude to get the breakdown (pass project_path directly to avoid race)
             await update_step("Breaking down task...")
-            success, response = await self.runner.run_claude(
-                breakdown_prompt,
-                timeout=self.config.claude_timeout,
-                project_path=project_path,
-            )
+            async with self._task_semaphore:
+                success, response = await self.runner.run_claude(
+                    breakdown_prompt,
+                    timeout=self.config.claude_timeout,
+                    project_path=project_path,
+                )
 
             if not success:
                 logger.error("prd_analyze_failed", response=response[:200])

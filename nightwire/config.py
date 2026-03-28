@@ -116,6 +116,11 @@ class Config:
         return self.settings.get("claude_max_turns", 25)
 
     @property
+    def max_concurrent_tasks(self) -> int:
+        """Max Claude subprocesses running simultaneously (default 2)."""
+        return self.settings.get("max_concurrent_tasks", 2)
+
+    @property
     def claude_path(self) -> str:
         """Get absolute path to Claude CLI binary."""
         configured = self.settings.get("claude_path")

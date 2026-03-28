@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.5.18] - 2026-03-28
 
+### Added
+- Global concurrent task semaphore (`max_concurrent_tasks`, default 2) to prevent OOM kills from multiple simultaneous Claude subprocesses
+- Node.js heap cap (`NODE_OPTIONS=--max-old-space-size=8192`) on Claude CLI subprocesses to prevent runaway memory consumption
+
 ### Changed
 - Increased default `claude_max_turns` from 15 to 25 to prevent premature task termination on complex tasks
 
