@@ -112,8 +112,8 @@ class Config:
 
     @property
     def claude_max_turns(self) -> int:
-        """Get max turns per Claude invocation to prevent token overflow (default 15)."""
-        return self.settings.get("claude_max_turns", 15)
+        """Get max turns per Claude invocation to prevent token overflow (default 25)."""
+        return self.settings.get("claude_max_turns", 25)
 
     @property
     def claude_path(self) -> str:
