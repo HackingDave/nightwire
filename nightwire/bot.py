@@ -1059,6 +1059,7 @@ AI Assistant:
                 self._sender_tasks.pop(task_key, None)
 
         task_state["task"] = asyncio.create_task(run_task())
+        task_state["task"].add_done_callback(_log_task_exception)
         logger.info("background_task_started", task=task_description[:50], sender=sender, project=project_name)
 
     async def _handle_global_command(self, sender: str, args: str) -> str:

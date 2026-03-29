@@ -5,6 +5,16 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.19] - 2026-03-28
+
+### Security
+- Hardened autonomous executor prompts against prompt injection — user-provided data (task titles, descriptions, PRD/story context, learnings) now wrapped in `<user_data>` tags with explicit data-only instructions
+- Added prompt injection warning to memory context section header — prevents stored memories and conversation history from being treated as instructions
+- Consistent with `_build_fix_prompt()` which already used `<task_data>` tags
+
+### Fixed
+- Added missing `_log_task_exception` callback on `/do` background tasks — prevents silent swallowing of unexpected errors (consistent with other task creation points)
+
 ## [2.5.18] - 2026-03-28
 
 ### Added
