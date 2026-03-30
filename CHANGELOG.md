@@ -5,6 +5,13 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.20] - 2026-03-29
+
+### Fixed
+- Background task error reports no longer stored in memory — prevents stale failure context from contaminating future Claude prompts
+- Background task messages now include elapsed time and original task description in all outcomes (success, failure, empty, cancelled, internal error)
+- Detect when Claude exits successfully but returns an error narrative instead of task output — clearly flags it as incomplete and skips memory storage
+
 ## [2.5.19] - 2026-03-28
 
 ### Security

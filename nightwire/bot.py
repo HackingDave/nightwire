@@ -38,6 +38,43 @@ def _log_task_exception(task: asyncio.Task):
         logger.error("background_task_failed", error=str(exc), exc_type=type(exc).__name__)
 
 
+# Phrases that indicate Claude's response is an error report rather than a real result.
+# When Claude encounters failures during execution (e.g. SSH errors), it sometimes
+# exits successfully but returns a narrative about the failure instead of task output.
+# These responses pollute memory and confuse users if relayed verbatim.
+_ERROR_REPORT_PHRASES = (
+    "task failed",
+    "failed to",
+    "could not connect",
+    "connection refused",
+    "ssh attempt",
+    "wrong ip",
+    "wrong-ip",
+    "already resolved",
+    "stale notification",
+    "permission denied",
+    "host unreachable",
+    "no route to host",
+    "connection timed out",
+)
+
+# Minimum number of phrase matches to classify a response as an error report.
+# A single match could be coincidental; two suggests the response is about a failure.
+_ERROR_REPORT_THRESHOLD = 2
+
+
+def _looks_like_error_report(response: str) -> bool:
+    """Detect if a 'successful' Claude response is actually an error/failure narrative.
+
+    Returns True when the response appears to describe a failure rather than
+    containing useful task output. Used to avoid storing garbage in memory
+    and to give the user clear feedback instead of a confusing pass-through.
+    """
+    lower = response.lower()
+    hits = sum(1 for phrase in _ERROR_REPORT_PHRASES if phrase in lower)
+    return hits >= _ERROR_REPORT_THRESHOLD
+
+
 class SignalBot:
     """Signal bot that interfaces with Claude."""
 
@@ -1006,24 +1043,53 @@ AI Assistant:
                         project_path=task_project_path,
                     )
 
+                # Calculate elapsed time for all outcome messages
+                elapsed_mins = int((datetime.now() - task_state["start"]).total_seconds() / 60)
+                elapsed_str = f"{elapsed_mins}m" if elapsed_mins > 0 else "<1m"
+                task_desc = self._truncate_description(task_description)
+
                 # Handle empty or failed responses
                 if not success:
                     logger.error("claude_task_failed", response=response[:200])
-                    await self._send_message(
-                        sender,
-                        f"[{project_name}] Task failed: {response}" if response.strip() else f"[{project_name}] Task failed. Please try again.",
-                    )
+                    if response.strip():
+                        await self._send_message(
+                            sender,
+                            f"[{project_name}] Task failed ({elapsed_str}): {task_desc}\n{response}",
+                        )
+                    else:
+                        await self._send_message(
+                            sender,
+                            f"[{project_name}] Task failed ({elapsed_str}): {task_desc}\nNo details available. Please try again.",
+                        )
                     return
 
                 if not response or not response.strip():
                     logger.warning("claude_empty_response", output_length=len(response) if response else 0)
                     await self._send_message(
                         sender,
-                        f"[{project_name}] Claude returned an empty response. This can happen with URLs or content it can't process. Please try rephrasing your request.",
+                        f"[{project_name}] Task returned empty ({elapsed_str}): {task_desc}\nThis can happen with URLs or content it can't process. Please try rephrasing.",
                     )
                     return
 
-                # Store response to memory
+                # Detect "successful" responses that are actually error narratives.
+                # Claude sometimes exits 0 but returns a story about a failure
+                # instead of useful output. Don't store these in memory (breaks
+                # future context) and frame them clearly for the user.
+                if _looks_like_error_report(response):
+                    logger.warning(
+                        "claude_error_report_detected",
+                        response=response[:200],
+                        task=task_description[:50],
+                    )
+                    await self._send_message(
+                        sender,
+                        f"[{project_name}] Task did not complete ({elapsed_str}): {task_desc}\n"
+                        f"Claude reported an issue instead of completing the task:\n{response}\n\n"
+                        f"This was NOT stored in memory. You may want to retry.",
+                    )
+                    return
+
+                # Store response to memory (only clean, successful responses)
                 t = asyncio.create_task(
                     self.memory.store_message(
                         phone_number=sender,
@@ -1035,8 +1101,8 @@ AI Assistant:
                 )
                 t.add_done_callback(_log_task_exception)
 
-                # Send the response prefixed with project name
-                await self._send_message(sender, f"[{project_name}] {response}")
+                # Send the response prefixed with project name and elapsed time
+                await self._send_message(sender, f"[{project_name}] Done ({elapsed_str}): {response}")
 
             except asyncio.CancelledError:
                 reason = task_state.get("cancel_reason") or "Unknown reason"
@@ -1053,7 +1119,11 @@ AI Assistant:
                             reason=reason)
             except Exception as e:
                 logger.error("background_task_error", error=str(e), exc_type=type(e).__name__)
-                await self._send_message(sender, f"[{project_name}] Task failed due to an internal error.")
+                task_desc = self._truncate_description(task_description)
+                await self._send_message(
+                    sender,
+                    f"[{project_name}] Task failed (internal error): {task_desc}\nPlease try again.",
+                )
             finally:
                 # Clear task state for this (sender, project) pair
                 self._sender_tasks.pop(task_key, None)
