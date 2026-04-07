@@ -1,4 +1,4 @@
-"""Claude CLI runner for nightwire."""
+"""CLI runner for nightwire coding agents."""
 
 import asyncio
 import json
@@ -114,7 +114,7 @@ class ClaudeRunner:
         self.current_project = validated
         logger.info("project_set", path=str(validated))
 
-    def _build_runner_command(self, project_path: Path) -> List[str]:
+    def _build_runner_command(self, project_path: Path, prompt: str) -> List[str]:
         """Build CLI command for configured runner."""
         if self.config.runner_type == "opencode":
             return [
@@ -136,6 +136,24 @@ class ClaudeRunner:
                 "-C",
                 str(project_path),
             ]
+        if self.config.runner_type == "cursor":
+            runner_path = Path(self.config.runner_path)
+            command = [str(runner_path)]
+            if runner_path.name == "cursor":
+                command.append("agent")
+            command.extend(
+                [
+                    "--print",
+                    "--output-format",
+                    "json",
+                    "--force",
+                    "--trust",
+                    "--workspace",
+                    str(project_path),
+                    prompt,
+                ]
+            )
+            return command
 
         return [
             self.config.claude_path,
@@ -159,7 +177,7 @@ class ClaudeRunner:
             "NODE_OPTIONS": os.environ.get("NODE_OPTIONS", "--max-old-space-size=8192"),
         }
 
-        if self.config.runner_type in {"opencode", "codex"}:
+        if self.config.runner_type in {"opencode", "codex", "cursor"}:
             env.update(
                 {
                     "XDG_CONFIG_HOME": os.environ.get("XDG_CONFIG_HOME", ""),
@@ -171,6 +189,8 @@ class ClaudeRunner:
             env["OPENCODE_CONFIG_DIR"] = os.environ.get("OPENCODE_CONFIG_DIR", "")
         elif self.config.runner_type == "codex":
             env["CODEX_HOME"] = os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))
+        elif self.config.runner_type == "cursor":
+            env["CURSOR_API_KEY"] = os.environ.get("CURSOR_API_KEY", "")
         else:
             env["ANTHROPIC_API_KEY"] = os.environ.get("ANTHROPIC_API_KEY", "")
 
@@ -264,6 +284,52 @@ class ClaudeRunner:
 
         return "\n".join(text_parts).strip()
 
+    def _extract_cursor_text(self, output: str) -> str:
+        """Extract readable text from Cursor Agent JSON output."""
+        text_parts: List[str] = []
+
+        def append_text(value: object) -> None:
+            if isinstance(value, str) and value.strip():
+                text_parts.append(value.strip())
+
+        def append_content(value: object) -> None:
+            if isinstance(value, str):
+                append_text(value)
+                return
+            if isinstance(value, list):
+                for item in value:
+                    append_content(item)
+                return
+            if not isinstance(value, dict):
+                return
+
+            append_text(value.get("text"))
+            append_text(value.get("content"))
+            append_content(value.get("message"))
+            append_content(value.get("messages"))
+            append_content(value.get("result"))
+
+        for line in output.splitlines():
+            line = line.strip()
+            if not line or not line.startswith("{"):
+                continue
+
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(event, dict):
+                continue
+
+            append_text(event.get("text"))
+            append_content(event.get("message"))
+            append_content(event.get("messages"))
+            append_content(event.get("content"))
+            append_content(event.get("result"))
+
+        return "\n".join(dict.fromkeys(text_parts)).strip()
+
     async def run_claude(
         self,
         prompt: str,
@@ -323,7 +389,7 @@ class ClaudeRunner:
 
         # Build the runner command (prompt is passed via stdin to avoid
         # argument parsing issues when prompt starts with dashes)
-        cmd = self._build_runner_command(effective_project)
+        cmd = self._build_runner_command(effective_project, full_prompt)
 
         logger.info(
             "claude_run_start",
@@ -461,8 +527,11 @@ class ClaudeRunner:
                 progress_task = asyncio.create_task(send_progress_updates())
 
             try:
+                stdin_data = None
+                if self.config.runner_type != "cursor":
+                    stdin_data = prompt.encode("utf-8")
                 stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(input=prompt.encode("utf-8")), timeout=timeout
+                    proc.communicate(input=stdin_data), timeout=timeout
                 )
             except asyncio.TimeoutError:
                 self._kill_process_group(proc)
@@ -540,6 +609,10 @@ class ClaudeRunner:
                     extracted = self._extract_codex_text(output)
                     if extracted:
                         result = extracted
+                elif self.config.runner_type == "cursor":
+                    extracted = self._extract_cursor_text(output)
+                    if extracted:
+                        result = extracted
 
             return True, result, ErrorCategory.PERMANENT
 
@@ -547,6 +620,7 @@ class ClaudeRunner:
             runner_name = {
                 "opencode": "OpenCode",
                 "codex": "Codex",
+                "cursor": "Cursor Agent",
             }.get(self.config.runner_type, "Claude")
             logger.error("claude_not_found", runner=runner_name.lower())
             return (

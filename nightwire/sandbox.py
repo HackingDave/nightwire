@@ -113,6 +113,20 @@ def build_sandbox_command(
             "-v",
             f"{Path.home() / '.codex'}:/home/sandbox/.codex:ro",
         ])
+    elif effective_runner_type == "cursor":
+        docker_cmd.extend([
+            "-e", "HOME",
+            "-e", "XDG_CONFIG_HOME",
+            "-e", "XDG_DATA_HOME",
+            "-e", "XDG_STATE_HOME",
+            "-e", "CURSOR_API_KEY",
+            "-v",
+            f"{Path.home() / '.cursor'}:/home/sandbox/.cursor:ro",
+            "-v",
+            f"{Path.home() / '.local/bin'}:/home/sandbox/.local/bin:ro",
+            "-v",
+            f"{Path.home() / '.local/share/cursor-agent'}:/home/sandbox/.local/share/cursor-agent:ro",
+        ])
     else:
         docker_cmd.extend([
             "-e", "ANTHROPIC_API_KEY",

@@ -3,7 +3,7 @@
 # nightwire installer
 # Signal AI Bot
 #
-# Usage: ./install.sh [--skip-signal] [--skip-systemd] [--opencode|--codex] [--uninstall] [--restart]
+# Usage: ./install.sh [--skip-signal] [--skip-systemd] [--opencode|--codex|--cursor] [--uninstall] [--restart]
 #
 
 set -e
@@ -374,6 +374,9 @@ for arg in "$@"; do
         --codex)
             RUNNER_TYPE="codex"
             ;;
+        --cursor)
+            RUNNER_TYPE="cursor"
+            ;;
         --help|-h)
             echo "Usage: ./install.sh [options]"
             echo ""
@@ -383,6 +386,7 @@ for arg in "$@"; do
             echo "  --skip-signal      Skip Signal pairing (configure later)"
             echo "  --opencode         Use OpenCode CLI instead of Claude CLI"
             echo "  --codex            Use Codex CLI instead of Claude CLI"
+            echo "  --cursor           Use Cursor Agent CLI instead of Claude CLI"
             echo "  --skip-systemd     Skip service installation"
             echo "  --uninstall        Remove nightwire service and containers"
             echo "  --restart          Restart the nightwire service"
@@ -777,7 +781,7 @@ else
     exit 1
 fi
 
-# Code runner CLI (Claude default, alternate runner via --opencode/--codex)
+# Code runner CLI (Claude default, alternate runner via --opencode/--codex/--cursor)
 if [ "$RUNNER_TYPE" = "opencode" ]; then
     if command -v opencode &> /dev/null; then
         RUNNER_PATH="$(command -v opencode)"
@@ -815,6 +819,36 @@ elif [ "$RUNNER_TYPE" = "codex" ]; then
         echo -e "    Install: ${CYAN}https://developers.openai.com/codex/cli${NC}"
         if [ "$QUICK_MODE" = true ]; then
             echo -e "    ${BLUE}(--quick: continuing without Codex CLI)${NC}"
+        else
+            read -p "    Continue anyway? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        fi
+    fi
+elif [ "$RUNNER_TYPE" = "cursor" ]; then
+    if command -v cursor &> /dev/null; then
+        RUNNER_PATH="$(command -v cursor)"
+        echo -e "  ${GREEN}✓${NC} Cursor Agent CLI"
+    elif command -v cursor-agent &> /dev/null; then
+        RUNNER_PATH="$(command -v cursor-agent)"
+        echo -e "  ${GREEN}✓${NC} Cursor Agent CLI"
+    elif command -v agent &> /dev/null; then
+        RUNNER_PATH="$(command -v agent)"
+        echo -e "  ${GREEN}✓${NC} Cursor Agent CLI"
+    elif [ -f "$HOME/.local/bin/cursor-agent" ]; then
+        RUNNER_PATH="$HOME/.local/bin/cursor-agent"
+        echo -e "  ${GREEN}✓${NC} Cursor Agent CLI ($RUNNER_PATH)"
+    elif [ -f "$HOME/.local/bin/agent" ]; then
+        RUNNER_PATH="$HOME/.local/bin/agent"
+        echo -e "  ${GREEN}✓${NC} Cursor Agent CLI ($RUNNER_PATH)"
+    else
+        echo -e "  ${YELLOW}!${NC} Cursor Agent CLI not found"
+        echo -e "    --cursor was specified but Cursor Agent CLI is not installed."
+        echo -e "    Install: ${CYAN}https://cursor.com/install${NC}"
+        if [ "$QUICK_MODE" = true ]; then
+            echo -e "    ${BLUE}(--quick: continuing without Cursor Agent CLI)${NC}"
         else
             read -p "    Continue anyway? [y/N] " -n 1 -r
             echo
@@ -1102,6 +1136,7 @@ if [ "$RUNNER_TYPE" = "claude" ]; then
         echo "    1) Claude CLI (default)"
         echo "    2) OpenCode CLI"
         echo "    3) Codex CLI"
+        echo "    4) Cursor Agent CLI"
         echo ""
         read -p "  > " RUNNER_CHOICE
         echo ""
@@ -1125,11 +1160,24 @@ if [ "$RUNNER_TYPE" = "claude" ]; then
         elif [ -f "$HOME/.local/bin/codex" ]; then
             RUNNER_PATH="$HOME/.local/bin/codex"
         fi
+    elif [ "$RUNNER_CHOICE" = "4" ]; then
+        RUNNER_TYPE="cursor"
+        if command -v cursor &> /dev/null; then
+            RUNNER_PATH="$(command -v cursor)"
+        elif command -v cursor-agent &> /dev/null; then
+            RUNNER_PATH="$(command -v cursor-agent)"
+        elif command -v agent &> /dev/null; then
+            RUNNER_PATH="$(command -v agent)"
+        elif [ -f "$HOME/.local/bin/cursor-agent" ]; then
+            RUNNER_PATH="$HOME/.local/bin/cursor-agent"
+        elif [ -f "$HOME/.local/bin/agent" ]; then
+            RUNNER_PATH="$HOME/.local/bin/agent"
+        fi
     fi
 fi
 
 # Persist runner selection in settings.yaml when a non-default runner is chosen
-if [ "$RUNNER_TYPE" = "opencode" ] || [ "$RUNNER_TYPE" = "codex" ]; then
+if [ "$RUNNER_TYPE" = "opencode" ] || [ "$RUNNER_TYPE" = "codex" ] || [ "$RUNNER_TYPE" = "cursor" ]; then
     if [ -z "$RUNNER_PATH" ]; then
         if [ "$RUNNER_TYPE" = "opencode" ]; then
             if command -v opencode &> /dev/null; then
@@ -1144,6 +1192,18 @@ if [ "$RUNNER_TYPE" = "opencode" ] || [ "$RUNNER_TYPE" = "codex" ]; then
                 RUNNER_PATH="$HOME/.npm-global/bin/codex"
             elif [ -f "$HOME/.local/bin/codex" ]; then
                 RUNNER_PATH="$HOME/.local/bin/codex"
+            fi
+        elif [ "$RUNNER_TYPE" = "cursor" ]; then
+            if command -v cursor &> /dev/null; then
+                RUNNER_PATH="$(command -v cursor)"
+            elif command -v cursor-agent &> /dev/null; then
+                RUNNER_PATH="$(command -v cursor-agent)"
+            elif command -v agent &> /dev/null; then
+                RUNNER_PATH="$(command -v agent)"
+            elif [ -f "$HOME/.local/bin/cursor-agent" ]; then
+                RUNNER_PATH="$HOME/.local/bin/cursor-agent"
+            elif [ -f "$HOME/.local/bin/agent" ]; then
+                RUNNER_PATH="$HOME/.local/bin/agent"
             fi
         fi
     fi
@@ -1698,6 +1758,12 @@ else
         if ! command -v codex &> /dev/null && ! [ -f "$HOME/.npm-global/bin/codex" ] && ! [ -f "$HOME/.local/bin/codex" ]; then
             echo ""
             echo -e "  ${STEP}. Install Codex CLI: ${CYAN}https://developers.openai.com/codex/cli${NC}"
+            STEP=$((STEP + 1))
+        fi
+    elif [ "$RUNNER_TYPE" = "cursor" ]; then
+        if ! command -v cursor &> /dev/null && ! command -v cursor-agent &> /dev/null && ! command -v agent &> /dev/null && ! [ -f "$HOME/.local/bin/cursor-agent" ] && ! [ -f "$HOME/.local/bin/agent" ]; then
+            echo ""
+            echo -e "  ${STEP}. Install Cursor Agent CLI: ${CYAN}https://cursor.com/install${NC}"
             STEP=$((STEP + 1))
         fi
     else

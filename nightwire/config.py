@@ -155,6 +155,15 @@ class Config:
             home_local = Path.home() / ".local" / "bin" / "opencode"
             if home_local.exists():
                 return str(home_local)
+        elif self.runner_type == "cursor":
+            for candidate in ("cursor", "cursor-agent", "agent"):
+                found = shutil.which(candidate)
+                if found:
+                    return found
+            for candidate in ("cursor", "cursor-agent", "agent"):
+                home_local = Path.home() / ".local" / "bin" / candidate
+                if home_local.exists():
+                    return str(home_local)
         elif self.runner_type == "codex":
             found = shutil.which("codex")
             if found:
