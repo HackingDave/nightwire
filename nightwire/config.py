@@ -11,6 +11,13 @@ from dotenv import load_dotenv
 
 logger = structlog.get_logger()
 
+# Cursor Agent `--model` uses API ids (e.g. composer-2). Legacy nightwire builds used UI-style names.
+_CURSOR_AGENT_MODEL_ALIASES = {
+    "cursor-composer-2": "composer-2",
+    "cursor-composer-2-fast": "composer-2-fast",
+    "cursor-composer-1.5": "composer-1.5",
+}
+
 
 class Config:
     """Configuration manager for the bot."""
@@ -181,13 +188,15 @@ class Config:
     def runner_model(self) -> Optional[str]:
         """Get the configured model override for the active runner, if any."""
         configured = self.settings.get("runner", {}).get("model")
+        if self.runner_type == "cursor":
+            if configured:
+                raw = str(configured).strip()
+                return _CURSOR_AGENT_MODEL_ALIASES.get(raw, raw)
+            # Pin Composer 2 Standard; Cursor CLI default is often the fast tier.
+            return "composer-2"
+
         if configured:
             return str(configured)
-
-        if self.runner_type == "cursor":
-            # Cursor currently defaults Composer 2 to the fast tier, so pin the
-            # standard Composer 2 model unless the user overrides it explicitly.
-            return "cursor-composer-2"
 
         return None
 
