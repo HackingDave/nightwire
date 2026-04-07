@@ -474,6 +474,7 @@ max_concurrent_tasks: 2     # Max simultaneous Claude subprocesses (prevents OOM
 # runner:
 #   type: "claude"       # "claude", "opencode", "codex", or "cursor"
 #   path: ""             # optional: explicit path to runner binary
+#   model: ""            # optional: model override (Cursor default: cursor-composer-2)
 
 # Project directories
 # projects_base_path: "/home/user/projects"   # Base path for project auto-discovery
@@ -546,6 +547,8 @@ agent login
 ```
 
 Or set `CURSOR_API_KEY` in your environment.
+
+When `runner.type` is `cursor`, Nightwire now pins Cursor Agent to `cursor-composer-2` by default so it uses Composer 2 Standard instead of Cursor's current fast default. You can override that with `runner.model` if needed.
 
 ### Environment Variables (.env)
 

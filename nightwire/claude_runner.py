@@ -150,9 +150,12 @@ class ClaudeRunner:
                     "--trust",
                     "--workspace",
                     str(project_path),
-                    prompt,
                 ]
             )
+            runner_model = getattr(self.config, "runner_model", None)
+            if runner_model:
+                command.extend(["--model", runner_model])
+            command.append(prompt)
             return command
 
         return [

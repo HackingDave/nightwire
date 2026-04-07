@@ -177,6 +177,20 @@ class Config:
 
         return self.claude_path
 
+    @property
+    def runner_model(self) -> Optional[str]:
+        """Get the configured model override for the active runner, if any."""
+        configured = self.settings.get("runner", {}).get("model")
+        if configured:
+            return str(configured)
+
+        if self.runner_type == "cursor":
+            # Cursor currently defaults Composer 2 to the fast tier, so pin the
+            # standard Composer 2 model unless the user overrides it explicitly.
+            return "cursor-composer-2"
+
+        return None
+
     # nightwire AI assistant configuration (any OpenAI-compatible provider)
     def _get_dict_setting(self, *keys: str) -> dict:
         """Safely get a config section that should be a dict, with fallback keys.

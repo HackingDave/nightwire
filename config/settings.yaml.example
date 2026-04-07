@@ -27,6 +27,7 @@ max_concurrent_tasks: 2       # Max simultaneous Claude subprocesses (prevents O
 # runner:
 #   type: "claude"       # "claude", "opencode", "codex", or "cursor"
 #   path: ""             # optional: explicit path to runner binary
+#   model: ""            # optional: model override (Cursor default: cursor-composer-2)
 
 # Memory System
 memory:
