@@ -98,7 +98,7 @@ def test_runner_path_wins_over_claude_path_when_both_set(monkeypatch):
 def test_default_runner_keeps_claude_command(monkeypatch):
     runner = _make_runner(monkeypatch, runner_type="claude")
 
-    cmd = runner._build_runner_command(Path("/tmp/project"))
+    cmd = runner._build_runner_command(Path("/tmp/project"), "do the thing")
 
     assert cmd == [
         "claude",
@@ -119,7 +119,7 @@ def test_opencode_runner_uses_json_command(monkeypatch):
         runner_path="/usr/local/bin/opencode",
     )
 
-    cmd = runner._build_runner_command(Path("/tmp/project"))
+    cmd = runner._build_runner_command(Path("/tmp/project"), "do the thing")
 
     assert cmd == [
         "/usr/local/bin/opencode",

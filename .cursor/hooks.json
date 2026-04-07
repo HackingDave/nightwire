@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "hooks/agent-mark-edit.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "hooks/run-verify-on-stop.sh"
+      }
+    ]
+  }
+}

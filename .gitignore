@@ -33,6 +33,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Cursor agent session flag (ephemeral)
+.cursor/.agent-edited-flag
+
 # IDE
 .vscode/
 .idea/

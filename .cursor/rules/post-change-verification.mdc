@@ -1,0 +1,24 @@
+---
+description: Run verification after code edits; before prod deploy only when deploy is part of the same agent task
+alwaysApply: true
+---
+
+# Verification after changes and before production deploy
+
+## After coding changes
+When you change application code in this repository, treat the task as incomplete until verification passes:
+
+1. Run `bash scripts/cursor-agent-verify.sh` from the repo root (activates `.venv` or `venv` if present, then `python3 -m pytest`).
+2. Fix failures and re-run until clean.
+3. Briefly review touched areas for logic and security issues relevant to the change.
+
+The Cursor `stop` hook runs `scripts/cursor-agent-verify.sh` when this generation included agent file edits; if it fails, fix the issues in a follow-up.
+
+## Production deploy in the same task
+If **your instructions include deploying to production**:
+
+- Run `bash scripts/cursor-agent-verify.sh` **immediately before** the first production deploy command in that same task.
+- Do **not** wire this into deploy scripts so that human-only standalone deploys stay unchanged.
+
+## Standalone deploy
+Human-only production deploys outside an agent session do not require this rule.
