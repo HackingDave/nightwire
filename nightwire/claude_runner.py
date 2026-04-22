@@ -150,7 +150,7 @@ class ClaudeRunner:
                 "exec",
                 "--json",
                 "--skip-git-repo-check",
-                "-s",
+                "--sandbox",
                 "danger-full-access",
             ]
             runner_model = getattr(self.config, "runner_model", None)
@@ -577,7 +577,7 @@ class ClaudeRunner:
                 logger.warning("claude_timeout", timeout=timeout, elapsed=elapsed)
                 return (
                     False,
-                    f"Claude timed out after {elapsed_min} minutes. Consider breaking the task into smaller pieces.",
+                    f"{self.config.runner_name} timed out after {elapsed_min} minutes. Consider breaking the task into smaller pieces.",
                     ErrorCategory.TRANSIENT,
                 )
             finally:
@@ -592,7 +592,7 @@ class ClaudeRunner:
 
             if proc.returncode is None:
                 # Process was cancelled externally (e.g. shutdown)
-                return False, "Claude process was cancelled.", ErrorCategory.INFRASTRUCTURE
+                return False, f"{self.config.runner_name} process was cancelled.", ErrorCategory.INFRASTRUCTURE
 
             return_code = proc.returncode
 
@@ -628,11 +628,11 @@ class ClaudeRunner:
 
                 # Return the most informative error message available
                 if errors:
-                    return False, f"Claude error: {errors[:1000]}", category
+                    return False, f"{self.config.runner_name} error: {errors[:1000]}", category
                 if output:
-                    return False, f"Claude error: {output[:1000]}", category
+                    return False, f"{self.config.runner_name} error: {output[:1000]}", category
 
-                return False, f"Claude exited with code {return_code}", category
+                return False, f"{self.config.runner_name} exited with code {return_code}", category
 
             result = output if output else errors
             if return_code == 0:
@@ -652,11 +652,7 @@ class ClaudeRunner:
             return True, result, ErrorCategory.PERMANENT
 
         except FileNotFoundError:
-            runner_name = {
-                "opencode": "OpenCode",
-                "codex": "Codex",
-                "cursor": "Cursor Agent",
-            }.get(self.config.runner_type, "Claude")
+            runner_name = self.config.runner_name
             logger.error("claude_not_found", runner=runner_name.lower())
             return (
                 False,
@@ -666,7 +662,7 @@ class ClaudeRunner:
 
         except Exception as e:
             logger.error("claude_exception", error=str(e), exc_type=type(e).__name__)
-            return False, f"Error running Claude: {str(e)}", ErrorCategory.INFRASTRUCTURE
+            return False, f"Error running {self.config.runner_name}: {str(e)}", ErrorCategory.INFRASTRUCTURE
 
     @staticmethod
     def _kill_process_group(proc: asyncio.subprocess.Process):

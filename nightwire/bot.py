@@ -915,12 +915,12 @@ Project Management:
   /add <name> [path] [desc] - Add existing project
   /remove <project> - Remove a project from the list
   /new <name> [desc] - Create new project
-  /status - Show current project and task status
+  /status - Show current project, runner, and task status
   /summary - Generate project summary
 
-Claude Tasks:
-  /ask <question> - Ask about the current project
-  /do <task> - Execute a task with Claude
+Code Runner Tasks:
+  /ask <question> - Ask the active code runner about the current project
+  /do <task> - Execute a task with the active code runner
   /complex <task> - Break into PRD with autonomous tasks
   /cancel - Stop the running task
 
@@ -1001,7 +1001,14 @@ AI Assistant:
         # 3. Account
         lines.append(f"Account: {self.account or 'NOT SET'}")
 
-        # 4. Docker container status
+        # 4. Active code runner
+        lines.append(f"Code runner: {self.config.runner_display_name}")
+        lines.append(f"Runner path: {self.config.runner_path}")
+        lines.append(f"Model: {self.config.runner_model_status}")
+        if self.config.runner_reasoning_effort:
+            lines.append(f"Reasoning effort: {self.config.runner_reasoning_effort}")
+
+        # 5. Docker container status
         try:
             result = await asyncio.to_thread(
                 __import__('subprocess').run,
@@ -1089,7 +1096,7 @@ AI Assistant:
 
                 task_state["step"] = "Waiting for available slot..."
                 async with self._task_semaphore:
-                    task_state["step"] = "Claude executing task..."
+                    task_state["step"] = f"{self.config.runner_name} executing task..."
                     # Use project_path captured at task creation to avoid race conditions
                     # when user switches projects while a task is running
                     success, response = await self.runner.run_claude(
@@ -1140,7 +1147,7 @@ AI Assistant:
                     await self._send_message(
                         sender,
                         f"[{project_name}] Task did not complete ({elapsed_str}): {task_desc}\n"
-                        f"Claude reported an issue instead of completing the task:\n{response}\n\n"
+                        f"{self.config.runner_name} reported an issue instead of completing the task:\n{response}\n\n"
                         f"This was NOT stored in memory. You may want to retry.",
                     )
                     return

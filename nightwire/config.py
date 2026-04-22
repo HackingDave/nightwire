@@ -18,6 +18,20 @@ _CURSOR_AGENT_MODEL_ALIASES = {
     "cursor-composer-1.5": "composer-1.5",
 }
 
+_RUNNER_NAMES = {
+    "claude": "Claude",
+    "opencode": "OpenCode",
+    "codex": "Codex",
+    "cursor": "Cursor Agent",
+}
+
+_RUNNER_DISPLAY_NAMES = {
+    "claude": "Claude CLI",
+    "opencode": "OpenCode CLI",
+    "codex": "Codex CLI",
+    "cursor": "Cursor Agent CLI",
+}
+
 
 class Config:
     """Configuration manager for the bot."""
@@ -146,12 +160,29 @@ class Config:
     @property
     def runner_type(self) -> str:
         """Get configured task runner type (default claude)."""
-        return self.settings.get("runner", {}).get("type", "claude")
+        return self._runner_config().get("type", "claude")
+
+    def _runner_config(self) -> dict:
+        """Get the runner config block, tolerating malformed config values."""
+        runner_config = self.settings.get("runner")
+        if isinstance(runner_config, dict):
+            return runner_config
+        return {}
+
+    @property
+    def runner_name(self) -> str:
+        """Get the active runner product name."""
+        return _RUNNER_NAMES.get(self.runner_type, "Claude")
+
+    @property
+    def runner_display_name(self) -> str:
+        """Get the active runner display name."""
+        return _RUNNER_DISPLAY_NAMES.get(self.runner_type, "Claude CLI")
 
     @property
     def runner_path(self) -> str:
         """Get absolute path to active runner binary."""
-        configured = self.settings.get("runner", {}).get("path")
+        configured = self._runner_config().get("path")
         if configured:
             return configured
 
@@ -187,7 +218,7 @@ class Config:
     @property
     def runner_model(self) -> Optional[str]:
         """Get the configured model override for the active runner, if any."""
-        configured = self.settings.get("runner", {}).get("model")
+        configured = self._runner_config().get("model")
         if self.runner_type == "cursor":
             if configured:
                 raw = str(configured).strip()
@@ -201,9 +232,17 @@ class Config:
         return None
 
     @property
+    def runner_model_status(self) -> str:
+        """Get a user-facing description of the active model selection."""
+        runner_model = self.runner_model
+        if runner_model:
+            return runner_model
+        return "not set (using CLI default)"
+
+    @property
     def runner_reasoning_effort(self) -> Optional[str]:
         """Get the configured reasoning effort for the active runner, if any."""
-        configured = self.settings.get("runner", {}).get("reasoning_effort")
+        configured = self._runner_config().get("reasoning_effort")
         if configured is None:
             return None
         return str(configured).strip()

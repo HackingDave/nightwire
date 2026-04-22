@@ -48,6 +48,17 @@ class ProjectManager:
         """Get the path for a project by name (case-insensitive)."""
         return self.config.get_project_path(project_name)
 
+    def _runner_status_lines(self) -> List[str]:
+        """Describe the active code runner for user-facing status output."""
+        lines = [
+            f"Runner: {self.config.runner_display_name}",
+            f"Runner path: {self.config.runner_path}",
+            f"Model: {self.config.runner_model_status}",
+        ]
+        if self.config.runner_reasoning_effort:
+            lines.append(f"Reasoning effort: {self.config.runner_reasoning_effort}")
+        return lines
+
     def list_projects(self, phone_number: Optional[str] = None) -> str:
         """List registered projects visible to this phone number."""
         all_projects = self.config.get_project_list()
@@ -126,7 +137,12 @@ class ProjectManager:
         logger.info("project_selected", name=matched_name, path=str(validated_path),
                      phone="..." + phone_number[-4:])
 
-        return True, f"Selected: {matched_name}\nPath: {validated_path}"
+        lines = [
+            f"Selected: {matched_name}",
+            f"Path: {validated_path}",
+            *self._runner_status_lines(),
+        ]
+        return True, "\n".join(lines)
 
     def add_project(self, name: str, path: str = None, description: str = "") -> Tuple[bool, str]:
         """Add a new project to the registry."""
@@ -202,7 +218,14 @@ class ProjectManager:
             # Select it for this user
             self._current_projects[phone_number] = (name, project_path)
 
-            return True, f"Created and selected new project: {name}\nPath: {project_path}\n\nReady for Claude! Send a message describing what to build."
+            lines = [
+                f"Created and selected new project: {name}",
+                f"Path: {project_path}",
+                *self._runner_status_lines(),
+                "",
+                f"Ready for {self.config.runner_name}. Send a message describing what to build.",
+            ]
+            return True, "\n".join(lines)
 
         except Exception as e:
             logger.error("project_create_error", name=name, error=str(e))
@@ -214,11 +237,16 @@ class ProjectManager:
         current_path = self.get_current_path(phone_number)
 
         if current_project is None:
-            return "No project selected. Use /select <project> to select one."
+            lines = [
+                "No project selected. Use /select <project> to select one.",
+                *self._runner_status_lines(),
+            ]
+            return "\n".join(lines)
 
         status = [
             f"Current project: {current_project}",
-            f"Path: {current_path}"
+            f"Path: {current_path}",
+            *self._runner_status_lines(),
         ]
 
         # Add some project info
