@@ -388,7 +388,7 @@ plugins:
 
 | Command | Description |
 |---------|-------------|
-| `/target` | Show available instances and pick one |
+| `/target` or `/targets` | Show available instances and pick one |
 | `/target <name>` | Set target (e.g., `/target osx` matches `nightwire-osx`) |
 | `/target status` | Show current target |
 | `/target clear` | Clear target (commands run on all instances again) |

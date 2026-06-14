@@ -191,7 +191,10 @@ class DeviceTargetPlugin(NightwirePlugin):
             await self._session.close()
 
     def commands(self):
-        return {"target": self._handle_target}
+        return {
+            "target": self._handle_target,
+            "targets": self._handle_target,
+        }
 
     def message_matchers(self):
         return [
@@ -210,6 +213,7 @@ class DeviceTargetPlugin(NightwirePlugin):
                 title="Device Targeting",
                 commands={
                     "target": "Show available instances and pick one",
+                    "targets": "Alias for /target",
                     "target <name>": "Set target instance (e.g., /target osx)",
                     "target status": "Show current target",
                     "target clear": "Clear target",

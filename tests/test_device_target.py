@@ -203,6 +203,13 @@ class TestMessageGating:
 class TestTargetCommand:
     """Test /target command handling."""
 
+    def test_targets_alias_registered(self, tmp_path):
+        ctx = _make_ctx(tmp_path, instance_name="nightwire-osx")
+        plugin = _make_plugin(ctx)
+        commands = plugin.commands()
+
+        assert commands["target"] == commands["targets"]
+
     @pytest.mark.asyncio
     async def test_target_set_responds_from_targeted_instance(self, tmp_path):
         """Only the newly targeted instance should respond."""
