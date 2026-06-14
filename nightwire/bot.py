@@ -1744,6 +1744,38 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 await asyncio.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, MAX_RECONNECT_DELAY)
 
+    @staticmethod
+    def _sync_destination_numbers(sent_message: dict) -> list[str]:
+        """Return phone-number destinations present in a sync sentMessage."""
+        numbers = []
+
+        for key in ("destination", "destinationNumber"):
+            value = sent_message.get(key)
+            if isinstance(value, str) and value.startswith("+"):
+                numbers.append(value)
+
+        for key in ("destinations", "destinationNumbers", "recipients"):
+            recipients = sent_message.get(key)
+            if not isinstance(recipients, list):
+                continue
+
+            for recipient in recipients:
+                if isinstance(recipient, str) and recipient.startswith("+"):
+                    numbers.append(recipient)
+                elif isinstance(recipient, dict):
+                    for recipient_key in (
+                        "number",
+                        "phoneNumber",
+                        "destination",
+                        "destinationNumber",
+                        "recipient",
+                    ):
+                        value = recipient.get(recipient_key)
+                        if isinstance(value, str) and value.startswith("+"):
+                            numbers.append(value)
+
+        return numbers
+
     async def _handle_signal_message(self, msg: dict):
         """Handle a message from Signal API."""
         try:
@@ -1769,18 +1801,22 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
             if sync_message and not message_text:
                 sent_message = sync_message.get("sentMessage")
                 if sent_message:
-                    # Check destination - only process messages sent to our own number
-                    destination = sent_message.get("destination") or sent_message.get("destinationNumber")
-
                     # Ignore group messages
                     if sent_message.get("groupInfo"):
                         return
 
-                    # Only process if sent to ourselves (the bot's number)
-                    if destination and destination == self.account:
-                        message_text = sent_message.get("message", "")
-                        attachments_list = sent_message.get("attachments") or []
-                        source = self.account
+                    destination_numbers = self._sync_destination_numbers(sent_message)
+                    if destination_numbers and self.account not in destination_numbers:
+                        logger.info(
+                            "sync_message_skipped",
+                            reason="destination_mismatch",
+                            destinations=len(destination_numbers),
+                        )
+                        return
+
+                    message_text = sent_message.get("message", "")
+                    attachments_list = sent_message.get("attachments") or []
+                    source = self.account
 
             # Download and save any image attachments
             image_paths = []
