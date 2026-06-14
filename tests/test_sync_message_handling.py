@@ -20,9 +20,12 @@ def _make_bot(tmp_path):
         instance_name="nightwire",
         signal_api_url="http://127.0.0.1:8080",
         attachments_dir=tmp_path,
+        allowed_numbers=[TEST_ACCOUNT],
     )
     bot._processed_messages = OrderedDict()
     bot._ws_connected_at = 0
+    bot._last_signal_receive_error_notified = 0
+    bot._send_message = AsyncMock()
     bot._process_message = AsyncMock()
     return bot
 
@@ -95,3 +98,25 @@ async def test_sync_message_to_other_phone_number_is_ignored(tmp_path):
     await bot._handle_signal_message(msg)
 
     bot._process_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_signal_receive_exception_notifies_allowed_number(tmp_path):
+    bot = _make_bot(tmp_path)
+    msg = {
+        "account": TEST_ACCOUNT,
+        "exception": {
+            "message": "getServerGuid(...) must not be null",
+            "type": "NullPointerException",
+        },
+        "envelope": {
+            "timestamp": 1234567890003,
+        },
+    }
+
+    await bot._handle_signal_message(msg)
+
+    bot._process_message.assert_not_awaited()
+    bot._send_message.assert_awaited_once()
+    assert bot._send_message.await_args.args[0] == TEST_ACCOUNT
+    assert "Signal receive error" in bot._send_message.await_args.args[1]

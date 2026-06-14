@@ -119,6 +119,7 @@ class SignalBot:
         self._ws_frames_received = 0  # Total WebSocket frames received (for diagnostics)
         self._watchdog_task: Optional[asyncio.Task] = None
         self._startup_notified = False  # True after "ready" message sent on first WS connect
+        self._last_signal_receive_error_notified = 0.0
 
         # Per-(sender, project) task state tracking - allows concurrent tasks
         # across users AND across different projects for the same user.
@@ -1780,6 +1781,34 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         """Handle a message from Signal API."""
         try:
             envelope = msg.get("envelope", {})
+            receive_exception = msg.get("exception")
+            if receive_exception:
+                if isinstance(receive_exception, dict):
+                    error_message = receive_exception.get("message") or str(receive_exception)
+                    error_type = receive_exception.get("type")
+                else:
+                    error_message = str(receive_exception)
+                    error_type = None
+
+                logger.error(
+                    "signal_receive_exception",
+                    error=error_message,
+                    error_type=error_type,
+                    timestamp=envelope.get("timestamp"),
+                )
+
+                now = _time.time()
+                last_notified = getattr(self, "_last_signal_receive_error_notified", 0.0)
+                if now - last_notified > 300:
+                    self._last_signal_receive_error_notified = now
+                    for phone in getattr(self.config, "allowed_numbers", []):
+                        await self._send_message(
+                            phone,
+                            "Signal receive error: Nightwire could not read the last incoming Signal message.\n"
+                            f"signal-cli error: {error_message}",
+                        )
+                return
+
             source = envelope.get("source") or envelope.get("sourceNumber") or envelope.get("sourceUuid")
             message_text = None
             attachments_list = []

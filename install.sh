@@ -84,7 +84,7 @@ wait_for_qrcode() {
 
 # =============================================================================
 # Device linking — uses signal-cli inside the Docker container via docker exec.
-# The upstream image (1772646660-ci) includes all necessary fixes.
+# The upstream image includes current signal-cli receive fixes.
 # =============================================================================
 
 # Starts the Signal bridge container for device linking.
@@ -524,7 +524,7 @@ if [ "$UNINSTALL" = true ]; then
         # ── Step 3: Optionally remove Docker images ───────────────────────
 
         DOCKER_IMAGES=()
-        for img in bbernhard/signal-cli-rest-api:1772646660-ci nightwire-sandbox:latest; do
+        for img in bbernhard/signal-cli-rest-api:latest nightwire-sandbox:latest; do
             if docker image inspect "$img" &> /dev/null; then
                 DOCKER_IMAGES+=("$img")
             fi
@@ -1547,7 +1547,7 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
             -p "127.0.0.1:8080:8080" \
             -v "$SIGNAL_DATA_DIR:/home/.local/share/signal-cli" \
             -e MODE=json-rpc \
-            bbernhard/signal-cli-rest-api:1772646660-ci
+            bbernhard/signal-cli-rest-api:latest
     fi
 
     sleep 3
