@@ -395,5 +395,4 @@ plugins:
 
 **How it works:**
 
-On startup, the plugin queries the Signal API for linked devices whose names contain "nightwire". When you `/target osx`, subsequent `/do`, `/ask`, `/complex`, and `/summary` commands only execute on the instance named `nightwire-osx`. Other instances receive the message but silently ignore gated commands. Non-task commands (`/help`, `/status`, `/projects`) always run on every instance.
-
+On startup, the plugin queries the Signal API for linked devices whose names contain "nightwire". When you `/target osx`, subsequent `/do`, `/ask`, `/complex`, and `/summary` commands only execute on the instance named `nightwire-osx`. Other instances receive the message but silently ignore gated commands. Non-task commands (`/help`, `/select`, `/status`, `/projects`) always run on every instance.

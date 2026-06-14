@@ -64,6 +64,10 @@ _ERROR_REPORT_PHRASES = (
 # A single match could be coincidental; two suggests the response is about a failure.
 _ERROR_REPORT_THRESHOLD = 2
 
+WS_WATCHDOG_INTERVAL_SECONDS = 60
+WS_IDLE_RECONNECT_SECONDS = 600
+MESSAGE_HANDLING_TIMEOUT_SECONDS = 120
+
 
 def _looks_like_error_report(response: str) -> bool:
     """Detect if a 'successful' Claude response is actually an error/failure narrative.
@@ -1640,20 +1644,17 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
         Logs warnings if the websocket hasn't seen activity in a while,
         and verifies the event loop is responsive.
         """
-        WATCHDOG_INTERVAL = 60  # check every 60 seconds
-        WS_STALE_THRESHOLD = 600  # warn if no WS activity for 10 minutes
-
         try:
             while self.running:
-                await asyncio.sleep(WATCHDOG_INTERVAL)
+                await asyncio.sleep(WS_WATCHDOG_INTERVAL_SECONDS)
 
                 if self._last_ws_activity > 0:
                     idle_secs = _time.monotonic() - self._last_ws_activity
-                    if idle_secs > WS_STALE_THRESHOLD:
+                    if idle_secs > WS_IDLE_RECONNECT_SECONDS:
                         logger.warning(
                             "watchdog_ws_idle",
                             idle_seconds=int(idle_secs),
-                            threshold=WS_STALE_THRESHOLD,
+                            threshold=WS_IDLE_RECONNECT_SECONDS,
                             ws_frames_total=self._ws_frames_received,
                         )
         except asyncio.CancelledError:
@@ -1671,7 +1672,6 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
 
         reconnect_delay = 5
         MAX_RECONNECT_DELAY = 300
-        MESSAGE_HANDLING_TIMEOUT = 120  # seconds
 
         while self.running:
             try:
@@ -1695,7 +1695,19 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                             except Exception as e:
                                 logger.warning("startup_notify_error", error=str(e))
 
-                    async for msg in ws:
+                    while self.running:
+                        try:
+                            msg = await ws.receive(timeout=WS_IDLE_RECONNECT_SECONDS)
+                        except asyncio.TimeoutError:
+                            idle_secs = _time.monotonic() - self._last_ws_activity
+                            logger.warning(
+                                "websocket_stale_reconnect",
+                                idle_seconds=int(idle_secs),
+                                threshold=WS_IDLE_RECONNECT_SECONDS,
+                                ws_frames_total=self._ws_frames_received,
+                            )
+                            break
+
                         self._last_ws_activity = _time.monotonic()
                         self._ws_frames_received += 1
                         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -1703,12 +1715,12 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                                 data = json.loads(msg.data)
                                 await asyncio.wait_for(
                                     self._handle_signal_message(data),
-                                    timeout=MESSAGE_HANDLING_TIMEOUT,
+                                    timeout=MESSAGE_HANDLING_TIMEOUT_SECONDS,
                                 )
                             except asyncio.TimeoutError:
                                 logger.error(
                                     "message_handling_timeout",
-                                    timeout=MESSAGE_HANDLING_TIMEOUT,
+                                    timeout=MESSAGE_HANDLING_TIMEOUT_SECONDS,
                                     msg=data.get("envelope", {}).get("source", "unknown")[:20]
                                     if isinstance(data, dict) else "unknown",
                                 )
@@ -1717,7 +1729,11 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                         elif msg.type == aiohttp.WSMsgType.ERROR:
                             logger.error("websocket_error", error=str(ws.exception()))
                             break
-                        elif msg.type == aiohttp.WSMsgType.CLOSED:
+                        elif msg.type in (
+                            aiohttp.WSMsgType.CLOSE,
+                            aiohttp.WSMsgType.CLOSED,
+                            aiohttp.WSMsgType.CLOSING,
+                        ):
                             logger.info("websocket_closed")
                             break
 
