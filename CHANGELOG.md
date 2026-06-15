@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Updated the Signal bridge image to the current `bbernhard/signal-cli-rest-api:latest` build with signal-cli 0.14.5, avoiding receive failures from `getServerGuid(...) must not be null` in older signal-cli builds.
+- Treat signal-cli group sender-key `ProtocolNoSessionException` receive frames as automatic-retry diagnostics instead of user-facing Signal error notifications.
 
 ### Added
 - `/schedule` command — schedule prompts to run at regular intervals with human-friendly time expressions (e.g., `daily at 5am`, `every 6 hours`, `every weekday at 9am`)

@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -120,3 +120,37 @@ async def test_signal_receive_exception_notifies_allowed_number(tmp_path):
     bot._send_message.assert_awaited_once()
     assert bot._send_message.await_args.args[0] == TEST_ACCOUNT
     assert "Signal receive error" in bot._send_message.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_signal_sender_key_retry_exception_is_not_notified(tmp_path):
+    bot = _make_bot(tmp_path)
+    msg = {
+        "account": TEST_ACCOUNT,
+        "exception": {
+            "message": (
+                "org.signal.libsignal.protocol.NoSessionException: "
+                "missing sender key state for distribution ID "
+                "48a080c1-c735-45ab-972f-91d641663f9c"
+            ),
+            "type": "ProtocolNoSessionException",
+        },
+        "envelope": {
+            "sourceUuid": "11111111-2222-3333-4444-555555555555",
+            "sourceDevice": 1,
+            "timestamp": 1234567890004,
+        },
+    }
+
+    with patch("nightwire.bot.logger") as mock_logger:
+        await bot._handle_signal_message(msg)
+
+    bot._process_message.assert_not_awaited()
+    bot._send_message.assert_not_awaited()
+
+    retry_logs = [
+        call for call in mock_logger.warning.call_args_list
+        if call.args and call.args[0] == "signal_receive_sender_key_retry"
+    ]
+    assert len(retry_logs) == 1
+    assert retry_logs[0].kwargs["source_tail"] == "55555555"

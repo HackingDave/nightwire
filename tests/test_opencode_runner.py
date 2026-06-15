@@ -29,6 +29,7 @@ def _make_runner(monkeypatch, runner_type="claude", runner_path="claude"):
     cfg = SimpleNamespace(
         config_dir=Path("/tmp"),
         runner_type=runner_type,
+        runner_name="OpenCode" if runner_type == "opencode" else "Claude",
         runner_path=runner_path,
         claude_path="claude",
         claude_max_turns=8,
@@ -408,6 +409,7 @@ async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(
     cfg = SimpleNamespace(
         config_dir=tmp_path,
         runner_type="opencode",
+        runner_name="OpenCode",
         runner_path="/usr/local/bin/opencode",
         claude_path="claude",
         claude_max_turns=8,
@@ -451,7 +453,7 @@ async def test_signal_message_exec_path_uses_direct_or_sandbox_runner(
     runner = ClaudeRunner()
 
     bot = cast(Any, SignalBot.__new__(SignalBot))
-    bot.config = SimpleNamespace(memory_max_context_tokens=1000)
+    bot.config = SimpleNamespace(memory_max_context_tokens=1000, runner_name="OpenCode")
     bot.runner = runner
     bot.project_manager = SimpleNamespace(
         get_current_project=lambda _sender: "demo-project",

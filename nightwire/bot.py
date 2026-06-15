@@ -67,6 +67,18 @@ _ERROR_REPORT_THRESHOLD = 2
 WS_WATCHDOG_INTERVAL_SECONDS = 60
 WS_IDLE_RECONNECT_SECONDS = 600
 MESSAGE_HANDLING_TIMEOUT_SECONDS = 120
+SIGNAL_RECEIVE_ERROR_NOTIFY_INTERVAL_SECONDS = 300
+
+
+def _is_sender_key_retry_error(error_message: str, error_type: Optional[str]) -> bool:
+    """Return True for signal-cli's recoverable group sender-key retry path."""
+    lower_error = error_message.lower()
+    return (
+        error_type == "ProtocolNoSessionException"
+        and "nosessionexception" in lower_error
+        and "missing sender key state" in lower_error
+        and "distribution id" in lower_error
+    )
 
 
 def _looks_like_error_report(response: str) -> bool:
@@ -1790,16 +1802,40 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     error_message = str(receive_exception)
                     error_type = None
 
+                source = (
+                    envelope.get("sourceNumber")
+                    or envelope.get("sourceUuid")
+                    or envelope.get("source")
+                    or ""
+                )
+                source_tail = source[-8:] if source else None
+                if _is_sender_key_retry_error(error_message, error_type):
+                    logger.warning(
+                        "signal_receive_sender_key_retry",
+                        error=error_message,
+                        error_type=error_type,
+                        timestamp=envelope.get("timestamp"),
+                        source_tail=source_tail,
+                        source_device=envelope.get("sourceDevice"),
+                        recovery=(
+                            "signal-cli could not decrypt this group message yet; "
+                            "it should request a sender-key retry automatically"
+                        ),
+                    )
+                    return
+
                 logger.error(
                     "signal_receive_exception",
                     error=error_message,
                     error_type=error_type,
                     timestamp=envelope.get("timestamp"),
+                    source_tail=source_tail,
+                    source_device=envelope.get("sourceDevice"),
                 )
 
                 now = _time.time()
                 last_notified = getattr(self, "_last_signal_receive_error_notified", 0.0)
-                if now - last_notified > 300:
+                if now - last_notified > SIGNAL_RECEIVE_ERROR_NOTIFY_INTERVAL_SECONDS:
                     self._last_signal_receive_error_notified = now
                     for phone in getattr(self.config, "allowed_numbers", []):
                         await self._send_message(

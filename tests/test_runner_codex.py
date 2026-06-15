@@ -21,6 +21,7 @@ def _make_runner(model: str | None, reasoning_effort: str | None = None) -> Clau
         claude_path="/usr/bin/claude",
         claude_max_turns=25,
         config_dir=Path("/tmp"),
+        runner_name="Codex",
     )
     return runner
 
@@ -45,7 +46,7 @@ def test_codex_command_omits_model_flag_when_not_configured():
     runner = _make_runner(None)
     cmd = runner._build_runner_command(Path("/tmp/project"), "Fix the bug")
     assert "-m" not in cmd
-    assert cmd[-3:] == ["-C", str(Path("/tmp/project")), "Fix the bug"]
+    assert cmd[-4:] == ["-C", str(Path("/tmp/project")), "--", "Fix the bug"]
 
 
 @pytest.mark.asyncio
