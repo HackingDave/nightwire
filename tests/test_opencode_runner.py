@@ -95,6 +95,37 @@ def test_runner_path_wins_over_claude_path_when_both_set(monkeypatch):
     assert config.runner_path == "/custom/runner"
 
 
+@pytest.mark.parametrize(
+    ("runner_type", "runner_name", "runner_display_name"),
+    [
+        ("claude", "Claude", "Claude CLI"),
+        ("opencode", "OpenCode", "OpenCode CLI"),
+        ("codex", "Codex", "Codex CLI"),
+        ("cursor", "Cursor Agent", "Cursor Agent CLI"),
+    ],
+)
+def test_runner_display_properties(monkeypatch, runner_type, runner_name, runner_display_name):
+    config = _make_config(monkeypatch, {"runner": {"type": runner_type}})
+
+    assert config.runner_name == runner_name
+    assert config.runner_display_name == runner_display_name
+
+
+def test_runner_display_properties_fallback_for_malformed_runner(monkeypatch):
+    config = _make_config(monkeypatch, {"runner": True})
+
+    assert config.runner_type == "claude"
+    assert config.runner_name == "Claude"
+    assert config.runner_display_name == "Claude CLI"
+    assert config.runner_model_status == "not set (using CLI default)"
+
+
+def test_runner_model_status_uses_configured_model(monkeypatch):
+    config = _make_config(monkeypatch, {"runner": {"type": "codex", "model": "gpt-5"}})
+
+    assert config.runner_model_status == "gpt-5"
+
+
 # Section: Command construction
 def test_default_runner_keeps_claude_command(monkeypatch):
     runner = _make_runner(monkeypatch, runner_type="claude")
