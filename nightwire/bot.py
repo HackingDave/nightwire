@@ -81,6 +81,15 @@ def _is_sender_key_retry_error(error_message: str, error_type: Optional[str]) ->
     )
 
 
+def _is_duplicate_message_error(error_message: str, error_type: Optional[str]) -> bool:
+    """Return True for libsignal duplicate/replay frames that are safe to ignore."""
+    lower_error = error_message.lower()
+    return (
+        error_type == "ProtocolDuplicateMessageException"
+        or "duplicatemessageexception" in lower_error
+    )
+
+
 def _looks_like_error_report(response: str) -> bool:
     """Detect if a 'successful' Claude response is actually an error/failure narrative.
 
@@ -1820,6 +1829,21 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                         recovery=(
                             "signal-cli could not decrypt this group message yet; "
                             "it should request a sender-key retry automatically"
+                        ),
+                    )
+                    return
+
+                if _is_duplicate_message_error(error_message, error_type):
+                    logger.warning(
+                        "signal_receive_duplicate_message",
+                        error=error_message,
+                        error_type=error_type,
+                        timestamp=envelope.get("timestamp"),
+                        source_tail=source_tail,
+                        source_device=envelope.get("sourceDevice"),
+                        recovery=(
+                            "libsignal rejected a replayed or already-processed frame; "
+                            "the duplicate message can be ignored"
                         ),
                     )
                     return

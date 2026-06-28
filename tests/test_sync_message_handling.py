@@ -154,3 +154,36 @@ async def test_signal_sender_key_retry_exception_is_not_notified(tmp_path):
     ]
     assert len(retry_logs) == 1
     assert retry_logs[0].kwargs["source_tail"] == "55555555"
+
+
+@pytest.mark.asyncio
+async def test_signal_duplicate_message_exception_is_not_notified(tmp_path):
+    bot = _make_bot(tmp_path)
+    msg = {
+        "account": TEST_ACCOUNT,
+        "exception": {
+            "message": (
+                "org.signal.libsignal.protocol.DuplicateMessageException: "
+                "message with old counter 1 / 0"
+            ),
+            "type": "ProtocolDuplicateMessageException",
+        },
+        "envelope": {
+            "sourceUuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "sourceDevice": 5,
+            "timestamp": 1234567890005,
+        },
+    }
+
+    with patch("nightwire.bot.logger") as mock_logger:
+        await bot._handle_signal_message(msg)
+
+    bot._process_message.assert_not_awaited()
+    bot._send_message.assert_not_awaited()
+
+    duplicate_logs = [
+        call for call in mock_logger.warning.call_args_list
+        if call.args and call.args[0] == "signal_receive_duplicate_message"
+    ]
+    assert len(duplicate_logs) == 1
+    assert duplicate_logs[0].kwargs["source_tail"] == "eeeeeeee"
