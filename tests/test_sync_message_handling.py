@@ -10,11 +10,14 @@ from nightwire.bot import SignalBot
 
 
 TEST_ACCOUNT = "+15551234567"
+TEST_ACCOUNT_UUID = "11111111-2222-3333-4444-555555555555"
+OTHER_UUID = "00000000-0000-0000-0000-000000000001"
 
 
 def _make_bot(tmp_path):
     bot = SignalBot.__new__(SignalBot)
     bot.account = TEST_ACCOUNT
+    bot.account_uuid = None
     bot.session = None
     bot.config = SimpleNamespace(
         instance_name="nightwire",
@@ -31,11 +34,12 @@ def _make_bot(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_sync_message_without_phone_destination_is_processed(tmp_path):
+async def test_sync_message_without_destination_is_ignored(tmp_path):
     bot = _make_bot(tmp_path)
     msg = {
         "envelope": {
             "timestamp": 1234567890000,
+            "sourceUuid": TEST_ACCOUNT_UUID,
             "syncMessage": {
                 "sentMessage": {
                     "message": "/select swish365",
@@ -47,22 +51,19 @@ async def test_sync_message_without_phone_destination_is_processed(tmp_path):
 
     await bot._handle_signal_message(msg)
 
-    bot._process_message.assert_awaited_once_with(
-        TEST_ACCOUNT,
-        "/select swish365",
-        image_paths=[],
-    )
+    bot._process_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_sync_message_with_uuid_only_destination_is_processed(tmp_path):
+async def test_sync_message_to_self_phone_number_is_processed(tmp_path):
     bot = _make_bot(tmp_path)
     msg = {
         "envelope": {
             "timestamp": 1234567890001,
+            "sourceUuid": TEST_ACCOUNT_UUID,
             "syncMessage": {
                 "sentMessage": {
-                    "destinationUuid": "00000000-0000-0000-0000-000000000001",
+                    "destinationNumber": TEST_ACCOUNT,
                     "message": "/select swish365",
                     "attachments": [],
                 },
@@ -85,9 +86,58 @@ async def test_sync_message_to_other_phone_number_is_ignored(tmp_path):
     msg = {
         "envelope": {
             "timestamp": 1234567890002,
+            "sourceUuid": TEST_ACCOUNT_UUID,
             "syncMessage": {
                 "sentMessage": {
                     "destinationNumber": "+15557654321",
+                    "message": "/select swish365",
+                    "attachments": [],
+                },
+            },
+        },
+    }
+
+    await bot._handle_signal_message(msg)
+
+    bot._process_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_message_to_self_uuid_is_processed(tmp_path):
+    bot = _make_bot(tmp_path)
+    msg = {
+        "envelope": {
+            "timestamp": 1234567890006,
+            "sourceUuid": TEST_ACCOUNT_UUID,
+            "syncMessage": {
+                "sentMessage": {
+                    "destinationUuid": TEST_ACCOUNT_UUID,
+                    "message": "/select swish365",
+                    "attachments": [],
+                },
+            },
+        },
+    }
+
+    await bot._handle_signal_message(msg)
+
+    bot._process_message.assert_awaited_once_with(
+        TEST_ACCOUNT,
+        "/select swish365",
+        image_paths=[],
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_message_to_other_uuid_is_ignored(tmp_path):
+    bot = _make_bot(tmp_path)
+    msg = {
+        "envelope": {
+            "timestamp": 1234567890007,
+            "sourceUuid": TEST_ACCOUNT_UUID,
+            "syncMessage": {
+                "sentMessage": {
+                    "destinationUuid": OTHER_UUID,
                     "message": "/select swish365",
                     "attachments": [],
                 },

@@ -16,7 +16,7 @@ import structlog
 
 from .attachments import process_attachments
 from .config import get_config
-from .security import is_authorized, sanitize_input, check_rate_limit
+from .security import is_authorized, sanitize_input, check_rate_limit, is_uuid
 from .claude_runner import get_runner
 from .project_manager import get_project_manager
 from .memory import MemoryManager, MemoryCommands
@@ -1767,36 +1767,59 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 reconnect_delay = min(reconnect_delay * 2, MAX_RECONNECT_DELAY)
 
     @staticmethod
-    def _sync_destination_numbers(sent_message: dict) -> list[str]:
-        """Return phone-number destinations present in a sync sentMessage."""
-        numbers = []
+    def _sync_destination_identifiers(sent_message: dict) -> tuple[set[str], set[str]]:
+        """Return explicit phone-number and UUID destinations from a sync sentMessage."""
+        phone_numbers: set[str] = set()
+        uuids: set[str] = set()
 
-        for key in ("destination", "destinationNumber"):
-            value = sent_message.get(key)
-            if isinstance(value, str) and value.startswith("+"):
-                numbers.append(value)
+        def add_identifier(value: object):
+            if not isinstance(value, str):
+                return
+            if value.startswith("+"):
+                phone_numbers.add(value)
+            elif is_uuid(value):
+                uuids.add(value)
 
-        for key in ("destinations", "destinationNumbers", "recipients"):
+        for key in (
+            "destination",
+            "destinationNumber",
+            "destinationUuid",
+            "destinationServiceId",
+            "recipient",
+            "recipientUuid",
+            "serviceId",
+        ):
+            add_identifier(sent_message.get(key))
+
+        for key in (
+            "destinations",
+            "destinationNumbers",
+            "destinationUuids",
+            "destinationServiceIds",
+            "recipients",
+        ):
             recipients = sent_message.get(key)
             if not isinstance(recipients, list):
                 continue
 
             for recipient in recipients:
-                if isinstance(recipient, str) and recipient.startswith("+"):
-                    numbers.append(recipient)
-                elif isinstance(recipient, dict):
+                if isinstance(recipient, dict):
                     for recipient_key in (
                         "number",
                         "phoneNumber",
                         "destination",
                         "destinationNumber",
+                        "destinationUuid",
+                        "destinationServiceId",
                         "recipient",
+                        "recipientUuid",
+                        "serviceId",
                     ):
-                        value = recipient.get(recipient_key)
-                        if isinstance(value, str) and value.startswith("+"):
-                            numbers.append(value)
+                        add_identifier(recipient.get(recipient_key))
+                else:
+                    add_identifier(recipient)
 
-        return numbers
+        return phone_numbers, uuids
 
     async def _handle_signal_message(self, msg: dict):
         """Handle a message from Signal API."""
@@ -1870,6 +1893,7 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                 return
 
             source = envelope.get("source") or envelope.get("sourceNumber") or envelope.get("sourceUuid")
+            source_uuid = envelope.get("sourceUuid")
             message_text = None
             attachments_list = []
 
@@ -1894,12 +1918,27 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                     if sent_message.get("groupInfo"):
                         return
 
-                    destination_numbers = self._sync_destination_numbers(sent_message)
-                    if destination_numbers and self.account not in destination_numbers:
+                    destination_numbers, destination_uuids = self._sync_destination_identifiers(sent_message)
+                    is_self_target = bool(self.account and self.account in destination_numbers)
+                    if not is_self_target and source_uuid and source_uuid in destination_uuids:
+                        is_self_target = True
+
+                    # Only treat sync sentMessages as bot input when Signal explicitly
+                    # indicates they were sent back to this account. Ambiguous outbound
+                    # messages from linked devices should never be routed into Claude.
+                    if destination_numbers or destination_uuids:
+                        if not is_self_target:
+                            logger.info(
+                                "sync_message_skipped",
+                                reason="destination_mismatch",
+                                destination_numbers=len(destination_numbers),
+                                destination_uuids=len(destination_uuids),
+                            )
+                            return
+                    else:
                         logger.info(
                             "sync_message_skipped",
-                            reason="destination_mismatch",
-                            destinations=len(destination_numbers),
+                            reason="missing_destination",
                         )
                         return
 
