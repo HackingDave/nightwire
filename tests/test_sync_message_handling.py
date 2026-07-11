@@ -237,3 +237,30 @@ async def test_signal_duplicate_message_exception_is_not_notified(tmp_path):
     ]
     assert len(duplicate_logs) == 1
     assert duplicate_logs[0].kwargs["source_tail"] == "eeeeeeee"
+
+
+@pytest.mark.asyncio
+async def test_untrusted_identity_exception_sends_redacted_actionable_notice(tmp_path):
+    bot = _make_bot(tmp_path)
+    contact_uuid = "11111111-2222-4333-8444-555555555555"
+    msg = {
+        "account": TEST_ACCOUNT,
+        "exception": {
+            "message": f"Untrusted identity: {contact_uuid}",
+            "type": "UntrustedIdentityException",
+        },
+        "envelope": {
+            "sourceUuid": contact_uuid,
+            "sourceDevice": 1,
+            "timestamp": 1234567890006,
+        },
+    }
+
+    await bot._handle_signal_message(msg)
+
+    bot._process_message.assert_not_awaited()
+    bot._send_message.assert_awaited_once()
+    notice = bot._send_message.await_args.args[1]
+    assert "safety identity changed" in notice
+    assert "Verify" in notice
+    assert contact_uuid not in notice

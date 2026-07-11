@@ -90,6 +90,14 @@ def _is_duplicate_message_error(error_message: str, error_type: Optional[str]) -
     )
 
 
+def _is_untrusted_identity_error(error_message: str, error_type: Optional[str]) -> bool:
+    """Return True when Signal blocks a message after a contact key change."""
+    return (
+        error_type == "UntrustedIdentityException"
+        or "untrusted identity" in error_message.lower()
+    )
+
+
 def _looks_like_error_report(response: str) -> bool:
     """Detect if a 'successful' Claude response is actually an error/failure narrative.
 
@@ -207,6 +215,8 @@ class SignalBot:
 
         # Get the registered account (also runs signal-api health check)
         await self._get_account()
+        if not self.account:
+            raise RuntimeError("Signal API has no registered account")
         await self._check_signal_api_health()
 
         # Initialize memory system
@@ -1869,6 +1879,27 @@ Return ONLY valid JSON, no markdown code blocks, no explanation."""
                             "the duplicate message can be ignored"
                         ),
                     )
+                    return
+
+                if _is_untrusted_identity_error(error_message, error_type):
+                    logger.error(
+                        "signal_receive_untrusted_identity",
+                        error_type=error_type,
+                        timestamp=envelope.get("timestamp"),
+                        source_tail=source_tail,
+                        source_device=envelope.get("sourceDevice"),
+                    )
+                    now = _time.time()
+                    last_notified = getattr(self, "_last_signal_receive_error_notified", 0.0)
+                    if now - last_notified > SIGNAL_RECEIVE_ERROR_NOTIFY_INTERVAL_SECONDS:
+                        self._last_signal_receive_error_notified = now
+                        for phone in getattr(self.config, "allowed_numbers", []):
+                            await self._send_message(
+                                phone,
+                                "Signal blocked a message because a contact's safety identity "
+                                "changed. Verify that contact's safety number, then trust the "
+                                "new identity in signal-cli and ask them to resend.",
+                            )
                     return
 
                 logger.error(

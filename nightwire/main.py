@@ -74,9 +74,24 @@ async def main():
     # Run the bot
     try:
         bot_task = asyncio.create_task(bot.run())
+        shutdown_task = asyncio.create_task(shutdown_event.wait())
 
-        # Wait for shutdown signal
-        await shutdown_event.wait()
+        # A stopped bot cannot receive messages. Surface an unexpected exit so
+        # the service manager can restart it instead of leaving a false-active
+        # process behind.
+        done, _ = await asyncio.wait(
+            (bot_task, shutdown_task),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if bot_task in done:
+            shutdown_task.cancel()
+            try:
+                await shutdown_task
+            except asyncio.CancelledError:
+                pass
+            await bot_task
+            raise RuntimeError("Bot stopped unexpectedly")
 
         # Cancel the bot task
         bot_task.cancel()
