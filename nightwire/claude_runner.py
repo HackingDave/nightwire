@@ -580,6 +580,17 @@ class ClaudeRunner:
                     f"{self.config.runner_name} timed out after {elapsed_min} minutes. Consider breaking the task into smaller pieces.",
                     ErrorCategory.TRANSIENT,
                 )
+            except (asyncio.CancelledError, Exception):
+                # Task cancelled (e.g. /cancel) or transport-level failure:
+                # kill the process group so the CLI doesn't keep running with
+                # piped stdout/stderr that nobody drains.
+                self._kill_process_group(proc)
+                try:
+                    await proc.wait()
+                except Exception:
+                    pass
+                self._active_processes.discard(proc)
+                raise
             finally:
                 if progress_task:
                     progress_task.cancel()

@@ -1,3 +1,3 @@
 """nightwire - AI-Powered Development Assistant via Signal Messenger."""
 
-__version__ = "2.4.2"
+__version__ = "2.6.2"

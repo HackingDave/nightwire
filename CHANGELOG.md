@@ -5,6 +5,20 @@ All notable changes to nightwire (formerly sidechannel) will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.2] - 2026-09-22
+
+### Security
+- Removed the unused `anthropic` Python SDK dependency — the bot drives the Claude CLI and never imported the SDK, so the declared dependency only widened the vulnerability surface (PYSEC-2026-2114, PYSEC-2026-2115)
+- Upgraded dependencies with known vulnerabilities: anyio (CVE-2026-63374, CVE-2026-64847), idna (PYSEC-2026-215), click (PYSEC-2026-2132), pygments (PYSEC-2026-2987), setuptools (PYSEC-2026-3447), torch (PYSEC-2025-194), transformers (PYSEC-2026-2290, PYSEC-2026-3929), pytest (PYSEC-2026-1845)
+
+### Fixed
+- `/cancel` (and any other task cancellation) now kills the runner subprocess group — previously a `CancelledError` during `proc.communicate()` bypassed cleanup, leaving the CLI process running with undrained pipes until shutdown
+- Transport-level subprocess failures (e.g. reset pipes) now kill the process group instead of leaking the process
+
+### Changed
+- Updated dependencies: aiohttp 3.14, pydantic 2.13, sentence-transformers 6.1, transformers 5.17, torch 2.14, structlog 26.1, sqlite-vec 0.1.9, pytest 9.1
+- Aligned `__version__` and package version with the changelog (were stuck at 2.4.2 since 2.5.x)
+
 ## [2.6.1] - 2026-06-28
 
 ### Fixed

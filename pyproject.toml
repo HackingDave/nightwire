@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nightwire"
-version = "2.4.2"
+version = "2.6.2"
 description = "A Signal messaging bot with Claude, Codex, or OpenCode integration for intelligent conversations and autonomous development"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,7 +14,6 @@ authors = [
 ]
 dependencies = [
     "aiohttp>=3.8",
-    "anthropic>=0.18",
     "pydantic>=2.0",
     "PyYAML>=6.0",
     "python-dotenv>=1.0",
@@ -63,4 +62,5 @@ skips = ["B101"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
